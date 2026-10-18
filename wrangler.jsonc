@@ -11,6 +11,13 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "snapflix.indevs.in",
+      "custom_domain": true
+    }
+  ],
   "observability": {
     "enabled": true
   },

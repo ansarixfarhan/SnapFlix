@@ -73,11 +73,12 @@ const signInWithEmailAction: AuthAction<LoginFormInput> = async (data, supabase)
     .maybeSingle();
 
   if (!username) {
-    console.error("Username check error:", usernameError);
-    return {
-      success: false,
-      message: `Database error. Could not get username for ${user.user.email}.`,
-    };
+    console.warn("Username check missing for user, creating fallback profile:", usernameError);
+    const fallbackUsername = data.email.split("@")[0] || "User";
+    await supabase
+      .from("profiles")
+      .upsert({ id: user.user.id, username: fallbackUsername }, { onConflict: "id" });
+    return { success: true, message: `Welcome back, ${fallbackUsername}` };
   }
 
   return { success: true, message: `Welcome back, ${username.username}` };
@@ -113,13 +114,14 @@ const signUpAction: AuthAction<RegisterFormInput> = async (data, supabase) => {
   // Insert profile
   const { error: profileError } = await supabase
     .from("profiles")
-    .insert({ id: authData.user.id, username: data.username });
+    .upsert({ id: authData.user.id, username: data.username }, { onConflict: "id" });
 
   if (profileError) {
     console.error("Profile creation error:", profileError);
-    // This is a critical error. The user exists in auth but not in profiles.
-    // It's better to return a generic error and log it for investigation.
-    return { success: false, message: "Could not create user profile. Please contact support." };
+    return {
+      success: false,
+      message: `Could not create user profile: ${profileError.message || "Please contact support."}`,
+    };
   }
 
   return {

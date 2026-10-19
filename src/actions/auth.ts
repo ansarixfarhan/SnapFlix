@@ -44,10 +44,6 @@ const createAuthAction = <T extends { captchaToken?: string }>(
       return { success: false, message };
     }
 
-    if (!result.data.captchaToken) {
-      return { success: false, message: "Captcha is required." };
-    }
-
     try {
       const supabase = await createClient(admin);
       return await action(result.data, supabase);
@@ -65,9 +61,7 @@ const signInWithEmailAction: AuthAction<LoginFormInput> = async (data, supabase)
   const { data: user, error } = await supabase.auth.signInWithPassword({
     email: data.email,
     password: data.loginPassword,
-    options: {
-      captchaToken: data.captchaToken,
-    },
+    ...(data.captchaToken ? { options: { captchaToken: data.captchaToken } } : {}),
   });
 
   if (error) return { success: false, message: error.message };
@@ -110,9 +104,7 @@ const signUpAction: AuthAction<RegisterFormInput> = async (data, supabase) => {
   const { data: authData, error: signUpError } = await supabase.auth.signUp({
     email: data.email,
     password: data.password,
-    options: {
-      captchaToken: data.captchaToken,
-    },
+    ...(data.captchaToken ? { options: { captchaToken: data.captchaToken } } : {}),
   });
 
   if (signUpError) return { success: false, message: signUpError.message };
@@ -141,9 +133,10 @@ const sendResetPasswordEmailAction: AuthAction<ForgotPasswordFormInput> = async 
   data,
   supabase,
 ) => {
-  const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-    captchaToken: data.captchaToken,
-  });
+  const { error } = await supabase.auth.resetPasswordForEmail(
+    data.email,
+    data.captchaToken ? { captchaToken: data.captchaToken } : undefined,
+  );
 
   if (error) return { success: false, message: error.message };
 

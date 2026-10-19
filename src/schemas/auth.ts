@@ -9,7 +9,7 @@ const AuthFormSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters long"),
   loginPassword: z.string(),
   confirm: z.string().min(1, "Password confirmation is required"),
-  captchaToken: z.string().min(500, "Token too short").max(5000, "Token too long").optional(),
+  captchaToken: z.string().optional(),
 });
 
 const RegisterFormSchema = AuthFormSchema.omit({ loginPassword: true }).refine(

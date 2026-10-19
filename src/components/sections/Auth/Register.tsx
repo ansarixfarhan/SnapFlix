@@ -28,11 +28,15 @@ const AuthRegisterForm: React.FC<AuthFormProps> = ({ setForm }) => {
   const onSubmit = handleSubmit(async (data) => {
     const { success, message } = await signUp(data);
 
-    return addToast({
+    addToast({
       title: message,
       color: success ? "success" : "danger",
-      timeout: success ? Infinity : undefined,
+      timeout: success ? 5000 : undefined,
     });
+
+    if (success) {
+      setForm("login");
+    }
   });
 
   return (

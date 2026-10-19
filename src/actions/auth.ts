@@ -101,22 +101,25 @@ const signUpAction: AuthAction<RegisterFormInput> = async (data, supabase) => {
     return { success: false, message: "Username already taken." };
   }
 
-  // Create user
-  const { data: authData, error: signUpError } = await supabase.auth.signUp({
+  // Create user directly using admin API (bypasses Supabase SMTP rate limits and auto-confirms user)
+  const { data: authData, error: signUpError } = await supabase.auth.admin.createUser({
     email: data.email,
     password: data.password,
-    ...(data.captchaToken ? { options: { captchaToken: data.captchaToken } } : {}),
+    email_confirm: true,
   });
 
-  if (signUpError) return { success: false, message: signUpError.message };
-  if (!authData.user) return { success: false, message: "User not created. Please try again." };
+  if (signUpError) {
+    if (signUpError.message?.toLowerCase().includes("already been registered")) {
+      return {
+        success: false,
+        message: "An account with this email already exists. Please sign in instead.",
+      };
+    }
+    return { success: false, message: signUpError.message };
+  }
 
-  // Supabase returns an empty identities array when the email is already registered (email enumeration protection)
-  if (authData.user.identities && authData.user.identities.length === 0) {
-    return {
-      success: false,
-      message: "An account with this email already exists. Please sign in instead.",
-    };
+  if (!authData.user) {
+    return { success: false, message: "User not created. Please try again." };
   }
 
   // Insert profile
@@ -134,8 +137,7 @@ const signUpAction: AuthAction<RegisterFormInput> = async (data, supabase) => {
 
   return {
     success: true,
-    message:
-      "Sign up successful. Please check your email for verification. Check spam folder if you don't see it.",
+    message: "Sign up successful! You can now sign in with your credentials.",
   };
 };
 

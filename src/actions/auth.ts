@@ -111,6 +111,14 @@ const signUpAction: AuthAction<RegisterFormInput> = async (data, supabase) => {
   if (signUpError) return { success: false, message: signUpError.message };
   if (!authData.user) return { success: false, message: "User not created. Please try again." };
 
+  // Supabase returns an empty identities array when the email is already registered (email enumeration protection)
+  if (authData.user.identities && authData.user.identities.length === 0) {
+    return {
+      success: false,
+      message: "An account with this email already exists. Please sign in instead.",
+    };
+  }
+
   // Insert profile
   const { error: profileError } = await supabase
     .from("profiles")

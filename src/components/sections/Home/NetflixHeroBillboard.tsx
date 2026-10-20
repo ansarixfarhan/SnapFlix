@@ -19,6 +19,7 @@ import { IoInformationCircleOutline, IoPause } from "react-icons/io5";
 import { useSearchParams } from "next/navigation";
 import { Movie, TV } from "tmdb-ts/dist/types";
 import { cn } from "@/utils/helpers";
+import { tmdb } from "@/api/tmdb";
 
 /** Source the billboard ended up showing, used to tweak its copy. */
 type BillboardSource = "personalized" | "trending";
@@ -27,6 +28,58 @@ interface BillboardData {
   results: (Movie | TV)[];
   source: BillboardSource;
 }
+
+const HeroTitleLogo: React.FC<{
+  id: number;
+  type: "movie" | "tv";
+  title: string;
+}> = ({ id, type, title }) => {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  const { data: logoUrl } = useQuery({
+    queryKey: ["hero-title-logo", type, id],
+    queryFn: async () => {
+      try {
+        const res =
+          type === "tv"
+            ? await tmdb.tvShows.images(id, { include_image_language: ["en", "null"] })
+            : await tmdb.movies.images(id, { include_image_language: ["en", "null"] });
+        const logos = res?.logos || [];
+        if (logos.length === 0) return null;
+        const pngLogos = logos.filter((l) => l.file_path && !l.file_path.endsWith(".svg"));
+        const candidate =
+          pngLogos.find((l) => l.iso_639_1 === "en") ||
+          pngLogos.find((l) => !l.iso_639_1) ||
+          pngLogos[0] ||
+          logos[0];
+        return candidate?.file_path ? getImageUrl(candidate.file_path, "title") : null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 1000 * 60 * 60 * 24, // 24 hours
+  });
+
+  if (logoUrl && !imgFailed) {
+    return (
+      <div className="h-14 sm:h-20 md:h-24 lg:h-28 max-w-[260px] sm:max-w-sm md:max-w-md lg:max-w-lg flex items-center justify-start drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] my-1 sm:my-2">
+        <img
+          src={logoUrl}
+          alt={title}
+          className="max-h-full max-w-full object-contain object-left select-none"
+          onError={() => setImgFailed(true)}
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <h1 className="line-clamp-2 text-[1.7rem] leading-[1.05] font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] sm:text-5xl lg:text-6xl">
+      {title}
+    </h1>
+  );
+};
 
 interface NetflixHeroBillboardProps {
   contentType?: "movie" | "tv";
@@ -250,9 +303,7 @@ const NetflixHeroBillboard: React.FC<NetflixHeroBillboardProps> = ({ contentType
                     {isPersonalized ? "Recommended for you" : `#${idx + 1} today`}
                   </p>
 
-                  <h1 className="line-clamp-2 text-[1.7rem] leading-[1.05] font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] sm:text-5xl lg:text-6xl">
-                    {title}
-                  </h1>
+                  <HeroTitleLogo id={item.id} type={isTv ? "tv" : "movie"} title={title} />
 
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/75 sm:text-sm">
                     <span>{releaseYear}</span>
@@ -262,7 +313,15 @@ const NetflixHeroBillboard: React.FC<NetflixHeroBillboardProps> = ({ contentType
                     <span className="hidden sm:inline">{isTv ? "Series" : "Film"}</span>
                   </div>
 
-                  <p className="line-clamp-2 hidden max-w-lg text-sm leading-relaxed text-white/80 sm:block md:text-base">
+                  <p
+                    className="line-clamp-3 max-w-lg text-sm leading-relaxed text-white/80 md:text-base"
+                    style={{
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
                     {item.overview || "Stream this title on SnapFlix."}
                   </p>
 

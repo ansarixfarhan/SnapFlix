@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import BookmarkButton from "@/components/ui/button/BookmarkButton";
 import MarkCompletedButton from "@/components/ui/button/MarkCompletedButton";
 import ShareButton from "@/components/ui/button/ShareButton";
@@ -26,8 +27,18 @@ const DetailHeroBillboard: React.FC<DetailHeroBillboardProps> = ({
   type,
   onViewEpisodesClick,
 }) => {
+  const [logoFailed, setLogoFailed] = useState(false);
   const isTv = type === "tv";
   const title = isTv ? mutateTvShowTitle(media) : mutateMovieTitle(media);
+
+  const logos = media.images?.logos || [];
+  const pngLogos = logos.filter((l: any) => l.file_path && !l.file_path.endsWith(".svg"));
+  const candidate =
+    pngLogos.find((l: any) => l.iso_639_1 === "en") ||
+    pngLogos.find((l: any) => !l.iso_639_1) ||
+    pngLogos[0] ||
+    logos[0];
+  const titleLogoUrl = candidate?.file_path ? getImageUrl(candidate.file_path, "title") : null;
   const releaseDate = media.release_date || media.first_air_date;
   const parsedDate = releaseDate ? new Date(releaseDate) : null;
   const releaseYear = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.getFullYear() : null;
@@ -86,9 +97,21 @@ const DetailHeroBillboard: React.FC<DetailHeroBillboardProps> = ({
           )}
         </p>
 
-        <h1 className="line-clamp-2 text-[1.7rem] leading-[1.05] font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] sm:text-5xl lg:text-6xl">
-          {title}
-        </h1>
+        {titleLogoUrl && !logoFailed ? (
+          <div className="h-14 sm:h-20 md:h-24 lg:h-28 max-w-[260px] sm:max-w-sm md:max-w-md lg:max-w-lg flex items-center justify-start drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] my-1 sm:my-2">
+            <img
+              src={titleLogoUrl}
+              alt={title}
+              className="max-h-full max-w-full object-contain object-left select-none"
+              onError={() => setLogoFailed(true)}
+              draggable={false}
+            />
+          </div>
+        ) : (
+          <h1 className="line-clamp-2 text-[1.7rem] leading-[1.05] font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] sm:text-5xl lg:text-6xl">
+            {title}
+          </h1>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/75 sm:text-sm">
           {releaseYear && <span>{releaseYear}</span>}

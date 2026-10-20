@@ -17,6 +17,7 @@ import { cn } from "@/utils/helpers";
 import BookmarkButton from "@/components/ui/button/BookmarkButton";
 import ShareButton from "@/components/ui/button/ShareButton";
 import type { SavedMovieDetails } from "@/types/movie";
+import NativeWebPlayer from "@/components/player/NativeWebPlayer";
 
 const WatchAnimePage: NextPage<Params<{ id: string; episode: string }>> = ({ params }) => {
   const { id, episode: initialEpisode } = use(params);
@@ -190,51 +191,42 @@ const WatchAnimePage: NextPage<Params<{ id: string; episode: string }>> = ({ par
 
   const hasNextEpisode = episodesList.some((e) => e.episode_number === currentEpisode + 1);
 
+  const releaseYear = animeDetails?.first_air_date
+    ? new Date(animeDetails.first_air_date).getFullYear()
+    : 2025;
+
   return (
     <div className="flex flex-col lg:flex-row h-[100dvh] w-full overflow-hidden bg-black select-none">
       {/* 1. TOP VIDEO PLAYER WINDOW (16:9 Aspect Video in Portrait, Fullscreen on Rotation, Cinema Mode on Desktop) */}
       <div
-        onClick={resetTimer}
-        onTouchStart={resetTimer}
         className={cn(
           "relative bg-black transition-all duration-300 overflow-hidden shrink-0 player-responsive-video",
           isFullscreen
             ? "fixed inset-0 w-full h-[100dvh] z-[9999]"
-            : "w-full aspect-video lg:aspect-auto lg:flex-1 lg:h-full z-30 shadow-2xl border-b lg:border-b-0 lg:border-r border-white/10"
+            : "w-full aspect-video lg:aspect-auto lg:flex-1 lg:h-full z-30 shadow-2xl lg:border-r border-white/10"
         )}
       >
-        {/* Pure Bingr Player */}
-        <iframe
-          src={`/api/bingr-clean/watch/anime/${id}/${playerEpisode}`}
-          className="absolute inset-0 h-full w-full border-0 bg-black"
-          allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer"
-          allowFullScreen
-          referrerPolicy="no-referrer-when-downgrade"
+        {/* Native Web Player */}
+        <NativeWebPlayer
+          tmdbId={Number(id)}
+          title={animeTitle}
+          year={releaseYear}
+          type="tv"
+          season={1}
+          episode={playerEpisode}
+          episodeTitle={currentEpisodeData?.name}
+          episodes={episodesList}
+          hasNextEpisode={hasNextEpisode}
+          onNextEpisode={() => handleSelectEpisode(currentEpisode + 1)}
+          onSelectEpisode={(s, ep) => handleSelectEpisode(ep)}
+          originalLanguage={(animeDetails as any)?.original_language}
+          onBack={handleBack}
         />
-
-        {/* Top-Left Floating Back Button */}
-        <div
-          className={cn(
-            "absolute top-[max(0.75rem,env(safe-area-inset-top))] left-[max(0.75rem,env(safe-area-inset-left))] z-30 transition-all duration-300",
-            isFullscreen && !showControls
-              ? "opacity-0 pointer-events-none -translate-y-2"
-              : "opacity-100 pointer-events-auto translate-y-0"
-          )}
-        >
-          <button
-            onClick={handleBack}
-            aria-label="Go back"
-            className="sf-glass-strong flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white/90 transition-all group hover:text-white active:scale-95"
-          >
-            <IoArrowBack size={16} className="transition-transform group-hover:-translate-x-0.5" />
-            <span>Back</span>
-          </button>
-        </div>
       </div>
 
       {/* 2. DETAILS & EPISODES (Scrollable in Portrait, Sidebar on Desktop, hidden in Landscape) */}
       {!isFullscreen && (
-        <div className="flex-1 lg:flex-none lg:w-[380px] xl:w-[440px] 2xl:w-[480px] overflow-y-auto w-full bg-[#0c0c0e] text-white px-4 sm:px-6 py-4 space-y-5 pb-20 lg:pb-8 player-responsive-details">
+        <div className="flex-1 lg:flex-none lg:w-[380px] xl:w-[440px] 2xl:w-[480px] overflow-y-auto w-full bg-[#0c0c0e] text-white px-4 sm:px-6 pt-3 sm:pt-4 pb-20 lg:pb-8 space-y-4 sm:space-y-5 player-responsive-details">
           {/* Title & Active Episode Header */}
           <div className="space-y-1.5 border-b border-white/10 pb-3">
             <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-tight line-clamp-1">

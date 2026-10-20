@@ -84,24 +84,6 @@ export const playerAdapters = {
       };
     },
   } satisfies PlayerAdapter<VidkingPlayerMessage>,
-
-  bingr: {
-    origin: "https://bingr.one",
-    parse: (raw) => {
-      if (raw.type !== "PLAYER_EVENT") return null;
-      const d = raw.data;
-      if (d.event === "playerstatus") {
-        return {
-          event: d.playing ? "play" : "pause",
-          currentTime: d.currentTime || 0,
-          duration: d.duration || 0,
-          mediaId: "",
-          mediaType: "movie",
-        };
-      }
-      return null;
-    },
-  } satisfies PlayerAdapter<any>,
 } as const satisfies AdapterMap;
 
 export interface UsePlayerEventsOptions {
@@ -282,7 +264,7 @@ export function usePlayerEvents(options: UsePlayerEventsOptions = {}) {
 
       let parsed: UnifiedPlayerEventData | null = null;
 
-      // Handle Bingr / direct PLAYER_EVENT envelope
+      // Handle direct PLAYER_EVENT envelope
       if (rawData.type === "PLAYER_EVENT" && rawData.data) {
         const d = rawData.data;
         const eventName: PlayerEventType =

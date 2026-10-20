@@ -8,15 +8,10 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
 
-  // 1. Skip completely for static files, media, assets, brand, cdn-cgi, and API proxy routes (0ms overhead)
+  // 1. Skip completely for static files, cdn-cgi, and assets (0ms overhead)
   if (
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/assets") ||
-    pathname.startsWith("/media") ||
-    pathname.startsWith("/brand") ||
     pathname.startsWith("/cdn-cgi") ||
-    pathname.startsWith("/api/bingr") ||
-    pathname.startsWith("/api/bingr-clean") ||
     /\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2|js|css)$/i.test(pathname)
   ) {
     return supabaseResponse;

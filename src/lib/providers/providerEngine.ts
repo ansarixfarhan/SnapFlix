@@ -29,17 +29,19 @@ async function fetchModuleCode(providerValue: string, fileName: string): Promise
     return cached.code;
   }
 
-  // 1. Check local SnapFlix-Providers dist first for instant zero-latency loading
-  for (const localDist of LOCAL_DIST_PATHS) {
-    try {
-      const localFilePath = path.join(localDist, providerValue, `${fileName}.js`);
-      if (fs.existsSync(localFilePath)) {
-        const code = fs.readFileSync(localFilePath, 'utf8');
-        moduleCodeCache.set(cacheKey, { code, loadedAt: Date.now() });
-        return code;
+  // 1. Check local SnapFlix-Providers dist in development only
+  if (process.env.NODE_ENV === 'development') {
+    for (const localDist of LOCAL_DIST_PATHS) {
+      try {
+        const localFilePath = path.join(localDist, providerValue, `${fileName}.js`);
+        if (fs.existsSync(localFilePath)) {
+          const code = fs.readFileSync(localFilePath, 'utf8');
+          moduleCodeCache.set(cacheKey, { code, loadedAt: Date.now() });
+          return code;
+        }
+      } catch {
+        // Continue to next path
       }
-    } catch {
-      // Continue to next path
     }
   }
 
@@ -64,47 +66,91 @@ async function fetchModuleCode(providerValue: string, fileName: string): Promise
 function executeModule(code: string): Record<string, any> {
   const exportsObj: Record<string, any> = {};
   const moduleObj = { exports: exportsObj };
-  const sandbox = {
-    exports: exportsObj,
-    module: moduleObj,
-    console,
-    fetch: globalThis.fetch,
-    URL: globalThis.URL,
-    atob: globalThis.atob,
-    btoa: globalThis.btoa,
-    setTimeout: globalThis.setTimeout,
-    clearTimeout: globalThis.clearTimeout,
-    Promise: globalThis.Promise,
-    Object: globalThis.Object,
-    Array: globalThis.Array,
-    JSON: globalThis.JSON,
-    String: globalThis.String,
-    Number: globalThis.Number,
-    Boolean: globalThis.Boolean,
-    Math: globalThis.Math,
-    Date: globalThis.Date,
-    RegExp: globalThis.RegExp,
-    URLSearchParams: globalThis.URLSearchParams,
-    Buffer: globalThis.Buffer,
-    parseInt: globalThis.parseInt,
-    parseFloat: globalThis.parseFloat,
-    isNaN: globalThis.isNaN,
-    isFinite: globalThis.isFinite,
-    TextEncoder: globalThis.TextEncoder,
-    TextDecoder: globalThis.TextDecoder,
-    providerGlobal: {},
-    window: {
-      location: { href: '' },
-    },
-    document: {
-      getElementById: () => null,
-      createElement: () => ({ setAttribute: () => {}, appendChild: () => {} }),
-    },
-  };
 
-  vm.createContext(sandbox);
-  vm.runInContext(code, sandbox, { timeout: 15000 });
-  return sandbox.exports;
+  // 1. Try vm.createContext if available and properly contextified
+  try {
+    if (typeof vm !== 'undefined' && typeof vm.createContext === 'function' && typeof vm.runInContext === 'function') {
+      const sandbox = {
+        exports: exportsObj,
+        module: moduleObj,
+        console,
+        fetch: globalThis.fetch,
+        URL: globalThis.URL,
+        atob: globalThis.atob,
+        btoa: globalThis.btoa,
+        setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout,
+        Promise: globalThis.Promise,
+        Object: globalThis.Object,
+        Array: globalThis.Array,
+        JSON: globalThis.JSON,
+        String: globalThis.String,
+        Number: globalThis.Number,
+        Boolean: globalThis.Boolean,
+        Math: globalThis.Math,
+        Date: globalThis.Date,
+        RegExp: globalThis.RegExp,
+        URLSearchParams: globalThis.URLSearchParams,
+        Buffer: globalThis.Buffer,
+        parseInt: globalThis.parseInt,
+        parseFloat: globalThis.parseFloat,
+        isNaN: globalThis.isNaN,
+        isFinite: globalThis.isFinite,
+        TextEncoder: globalThis.TextEncoder,
+        TextDecoder: globalThis.TextDecoder,
+        providerGlobal: {},
+        window: {
+          location: { href: '' },
+        },
+        document: {
+          getElementById: () => null,
+          createElement: () => ({ setAttribute: () => {}, appendChild: () => {} }),
+        },
+      };
+
+      const context = vm.createContext(sandbox);
+      vm.runInContext(code, context, { timeout: 15000 });
+      const res = (context as any).module?.exports || (context as any).exports || sandbox.module?.exports || sandbox.exports;
+      if (res && Object.keys(res).length > 0) {
+        return res;
+      }
+    }
+  } catch {
+    // If vm fails (e.g. on Cloudflare Workers / workerd environment), proceed to universal runner
+  }
+
+  // 2. Universal Function runner (100% supported in Cloudflare Workers / Edge / Node)
+  try {
+    const fn = new Function(
+      'exports',
+      'module',
+      'console',
+      'fetch',
+      'URL',
+      'atob',
+      'btoa',
+      'Buffer',
+      'window',
+      'document',
+      code
+    );
+    fn(
+      exportsObj,
+      moduleObj,
+      console,
+      globalThis.fetch,
+      globalThis.URL,
+      globalThis.atob,
+      globalThis.btoa,
+      globalThis.Buffer,
+      { location: { href: '' } },
+      { getElementById: () => null, createElement: () => ({ setAttribute: () => {}, appendChild: () => {} }) }
+    );
+    return moduleObj.exports || exportsObj;
+  } catch (fnErr) {
+    console.warn('[ProviderEngine] executeModule failed:', fnErr);
+    return {};
+  }
 }
 
 export async function searchProvider({

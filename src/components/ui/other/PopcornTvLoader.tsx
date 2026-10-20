@@ -206,7 +206,7 @@ const PopcornTvLoader: React.FC<PopcornTvLoaderProps> = ({
             stroke={`url(#${gradientId})`}
             strokeWidth={1.2}
             strokeDasharray="5 11"
-            style={{ transformOrigin: "50% 50%" }}
+            initial={{ opacity: 0.18, scale: 1, rotate: 0 }}
             animate={
               reducedMotion
                 ? { opacity: 0.18, scale: 1, rotate: 0 }
@@ -228,7 +228,8 @@ const PopcornTvLoader: React.FC<PopcornTvLoaderProps> = ({
                   cy={particle.cy}
                   r={particle.r}
                   fill={`url(#${gradientId})`}
-                  animate={{ cy: [particle.cy, particle.cy - 22], opacity: [0, 0.85, 0] }}
+                  initial={{ y: 0, opacity: 0 }}
+                  animate={{ y: [0, -22], opacity: [0, 0.85, 0] }}
                   transition={{
                     duration: 1.7,
                     repeat: Infinity,

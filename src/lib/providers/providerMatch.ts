@@ -218,14 +218,16 @@ export async function resolveStreamAcrossProviders({
     }
   }
 
-  // 2. Select targeted batch of up to 4-5 relevant providers to stay within Cloudflare CPU & subrequest limits
-  const targetProviders = ACTIVE_PROVIDERS.filter(provider => {
-    if (provider.value === 'autoEmbed') return false; // already checked
-    if (type === 'anime') {
-      return provider.type === 'anime';
-    }
-    return provider.type !== 'anime';
-  }).slice(0, 5); // limit to top 5 providers per request
+  // 2. Select targeted batch of up to 5 relevant providers to stay within Cloudflare CPU & subrequest limits
+  const targetProviders =
+    type === 'anime'
+      ? ACTIVE_PROVIDERS.filter(p => p.type === 'anime').slice(0, 5)
+      : type === 'tv'
+      ? [
+          ...ACTIVE_PROVIDERS.filter(p => p.type !== 'anime' && p.value !== 'autoEmbed').slice(0, 4),
+          ...ACTIVE_PROVIDERS.filter(p => p.value === 'anikoto'),
+        ]
+      : ACTIVE_PROVIDERS.filter(p => p.type !== 'anime' && p.value !== 'autoEmbed').slice(0, 5);
 
   // Search/resolve fallback providers in parallel with timeout
   const searchPromises = targetProviders.map(provider => {

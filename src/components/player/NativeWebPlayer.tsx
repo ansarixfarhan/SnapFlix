@@ -1175,10 +1175,11 @@ export default function NativeWebPlayer({
 
   // 2. Playable URL with Proxy rewrite
   const getPlayableUrl = useCallback((stream: StreamItem) => {
-    const isHls = stream.type === 'm3u8' || stream.link.includes('.m3u8');
     const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
 
-    if (isHls || hasHeaders) {
+    // Only route through server proxy if the stream explicitly specifies custom request headers (e.g. Referer or User-Agent).
+    // Standard direct streams (HLS/MP4) without custom headers MUST be played directly by the browser to avoid Cloudflare Worker 403 blocks and subrequest limits.
+    if (hasHeaders) {
       const headersJson = JSON.stringify(stream.headers || {});
       return `/api/provider/proxy-stream?url=${encodeURIComponent(
         stream.link

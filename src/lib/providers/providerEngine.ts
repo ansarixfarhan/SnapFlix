@@ -1,157 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import vm from 'node:vm';
-import axios from 'axios';
 import { createProviderContext } from './providerContext';
+import { loadProviderModule } from './registry';
 import type { Info, Post, Stream } from './types';
-
-const BASE_REPO_URL =
-  'https://raw.githubusercontent.com/farhanansari888/SnapFlix-Providers/refs/heads/main';
-
-const LOCAL_DIST_PATHS = [
-  path.resolve(process.cwd(), '../SnapFlix-Providers/dist'),
-  path.resolve(process.cwd(), '../../SnapFlix-Providers/dist'),
-  'E:/SnapFlix/SnapFlix-Providers/dist',
-];
-
-interface ModuleCacheEntry {
-  code: string;
-  loadedAt: number;
-}
-
-const moduleCodeCache = new Map<string, ModuleCacheEntry>();
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-async function fetchModuleCode(providerValue: string, fileName: string): Promise<string> {
-  const cacheKey = `${providerValue}:${fileName}`;
-  const cached = moduleCodeCache.get(cacheKey);
-  if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
-    return cached.code;
-  }
-
-  // 1. Check local SnapFlix-Providers dist in development only
-  if (process.env.NODE_ENV === 'development') {
-    for (const localDist of LOCAL_DIST_PATHS) {
-      try {
-        const localFilePath = path.join(localDist, providerValue, `${fileName}.js`);
-        if (fs.existsSync(localFilePath)) {
-          const code = fs.readFileSync(localFilePath, 'utf8');
-          moduleCodeCache.set(cacheKey, { code, loadedAt: Date.now() });
-          return code;
-        }
-      } catch {
-        // Continue to next path
-      }
-    }
-  }
-
-  // 2. Fallback to GitHub raw
-  const url = `${BASE_REPO_URL}/dist/${providerValue}/${fileName}.js?t=${Date.now()}`;
-  const response = await axios.get(url, {
-    timeout: 15000,
-    headers: {
-      'Cache-Control': 'no-cache',
-    },
-  });
-
-  if (!response.data) {
-    throw new Error(`Failed to load module ${fileName}.js for ${providerValue}`);
-  }
-
-  const code = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-  moduleCodeCache.set(cacheKey, { code, loadedAt: Date.now() });
-  return code;
-}
-
-function executeModule(code: string): Record<string, any> {
-  const exportsObj: Record<string, any> = {};
-  const moduleObj = { exports: exportsObj };
-
-  // 1. Try vm.createContext if available and properly contextified
-  try {
-    if (typeof vm !== 'undefined' && typeof vm.createContext === 'function' && typeof vm.runInContext === 'function') {
-      const sandbox = {
-        exports: exportsObj,
-        module: moduleObj,
-        console,
-        fetch: globalThis.fetch,
-        URL: globalThis.URL,
-        atob: globalThis.atob,
-        btoa: globalThis.btoa,
-        setTimeout: globalThis.setTimeout,
-        clearTimeout: globalThis.clearTimeout,
-        Promise: globalThis.Promise,
-        Object: globalThis.Object,
-        Array: globalThis.Array,
-        JSON: globalThis.JSON,
-        String: globalThis.String,
-        Number: globalThis.Number,
-        Boolean: globalThis.Boolean,
-        Math: globalThis.Math,
-        Date: globalThis.Date,
-        RegExp: globalThis.RegExp,
-        URLSearchParams: globalThis.URLSearchParams,
-        Buffer: globalThis.Buffer,
-        parseInt: globalThis.parseInt,
-        parseFloat: globalThis.parseFloat,
-        isNaN: globalThis.isNaN,
-        isFinite: globalThis.isFinite,
-        TextEncoder: globalThis.TextEncoder,
-        TextDecoder: globalThis.TextDecoder,
-        providerGlobal: {},
-        window: {
-          location: { href: '' },
-        },
-        document: {
-          getElementById: () => null,
-          createElement: () => ({ setAttribute: () => {}, appendChild: () => {} }),
-        },
-      };
-
-      const context = vm.createContext(sandbox);
-      vm.runInContext(code, context, { timeout: 15000 });
-      const res = (context as any).module?.exports || (context as any).exports || sandbox.module?.exports || sandbox.exports;
-      if (res && Object.keys(res).length > 0) {
-        return res;
-      }
-    }
-  } catch {
-    // If vm fails (e.g. on Cloudflare Workers / workerd environment), proceed to universal runner
-  }
-
-  // 2. Universal Function runner (100% supported in Cloudflare Workers / Edge / Node)
-  try {
-    const fn = new Function(
-      'exports',
-      'module',
-      'console',
-      'fetch',
-      'URL',
-      'atob',
-      'btoa',
-      'Buffer',
-      'window',
-      'document',
-      code
-    );
-    fn(
-      exportsObj,
-      moduleObj,
-      console,
-      globalThis.fetch,
-      globalThis.URL,
-      globalThis.atob,
-      globalThis.btoa,
-      globalThis.Buffer,
-      { location: { href: '' } },
-      { getElementById: () => null, createElement: () => ({ setAttribute: () => {}, appendChild: () => {} }) }
-    );
-    return moduleObj.exports || exportsObj;
-  } catch (fnErr) {
-    console.warn('[ProviderEngine] executeModule failed:', fnErr);
-    return {};
-  }
-}
 
 export async function searchProvider({
   providerValue,
@@ -165,8 +14,8 @@ export async function searchProvider({
   signal?: AbortSignal;
 }): Promise<Post[]> {
   try {
-    const code = await fetchModuleCode(providerValue, 'posts');
-    const mod = executeModule(code);
+    const mod = await loadProviderModule(providerValue, 'posts');
+    if (!mod) return [];
     const searchFn = mod.getSearchPosts || mod.getPosts;
     if (!searchFn) return [];
 
@@ -195,8 +44,8 @@ export async function getProviderMeta({
   signal?: AbortSignal;
 }): Promise<Info | null> {
   try {
-    const code = await fetchModuleCode(providerValue, 'meta');
-    const mod = executeModule(code);
+    const mod = await loadProviderModule(providerValue, 'meta');
+    if (!mod) return null;
     const metaFn = mod.getMeta || mod.getInfo;
     if (!metaFn) return null;
 
@@ -227,8 +76,8 @@ export async function getProviderStream({
   isDownload?: boolean;
 }): Promise<Stream[]> {
   try {
-    const code = await fetchModuleCode(providerValue, 'stream');
-    const mod = executeModule(code);
+    const mod = await loadProviderModule(providerValue, 'stream');
+    if (!mod) return [];
     const streamFn = mod.getStream;
     if (!streamFn) return [];
 
@@ -263,8 +112,8 @@ export async function getProviderEpisodes({
   signal?: AbortSignal;
 }): Promise<any[]> {
   try {
-    const code = await fetchModuleCode(providerValue, 'episodes');
-    const mod = executeModule(code);
+    const mod = await loadProviderModule(providerValue, 'episodes');
+    if (!mod) return [];
     const episodesFn = mod.getEpisodes;
     if (!episodesFn) return [];
 

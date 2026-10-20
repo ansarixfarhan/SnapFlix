@@ -301,7 +301,7 @@ export async function resolveStreamAcrossProviders({
             targetLink = meta.linkList[0]?.directLinks?.[0]?.link || meta.linkList[0]?.episodesLink;
           } else {
             // TV Series: match season and episode strictly
-            const seasonEntry = meta.linkList.find(link => {
+            let seasonEntry = meta.linkList.find(link => {
               const sNum = seasonNumberFromTitle(link.title);
               return sNum !== undefined ? sNum === season : false;
             }) || meta.linkList.find(
@@ -309,6 +309,11 @@ export async function resolveStreamAcrossProviders({
                       link.title?.toLowerCase().includes(`s0${season}`) ||
                       link.title?.toLowerCase().includes(`s${season}`)
             );
+
+            // In Anime providers or single-entry series: season 1 or flat episode lists correspond to the main entry
+            if (!seasonEntry && (season === 1 || provider.type === 'anime' || meta.linkList.length === 1)) {
+              seasonEntry = meta.linkList[0];
+            }
 
             // If requested season is not available on this provider, do not pretend another season is it!
             if (!seasonEntry) {

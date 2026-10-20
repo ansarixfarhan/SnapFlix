@@ -185,51 +185,54 @@ export async function resolveStreamAcrossProviders({
   const cleanTitle = title.trim();
   if (!cleanTitle && !tmdbId) return [];
 
-  // Filter providers dynamically based on content type for maximum relevance & speed
+  // 1. Direct Ultra-Fast Path (MultiStream autoEmbed via TMDB ID)
+  if (tmdbId) {
+    try {
+      const payload = JSON.stringify({
+        tmdbId: String(tmdbId),
+        imdbId: imdbId || undefined,
+        type: type === 'tv' ? 'series' : 'movie',
+        season: season || 1,
+        episode: episode || 1,
+        title: cleanTitle,
+        year: year ? String(year) : undefined,
+      });
+      const directStreams = await getProviderStream({
+        providerValue: 'autoEmbed',
+        link: payload,
+        type,
+      });
+      if (directStreams && directStreams.length > 0) {
+        console.log(`[Provider] MultiStream (Direct TMDB) SUCCESS (${directStreams.length} streams)`);
+        return [
+          {
+            providerValue: 'autoEmbed',
+            providerName: 'MultiStream',
+            streams: directStreams,
+            infoTitle: cleanTitle,
+          },
+        ];
+      }
+    } catch (err) {
+      console.warn(`[Provider] MultiStream direct resolution attempt failed:`, err);
+    }
+  }
+
+  // 2. Select targeted batch of up to 4-5 relevant providers to stay within Cloudflare CPU & subrequest limits
   const targetProviders = ACTIVE_PROVIDERS.filter(provider => {
+    if (provider.value === 'autoEmbed') return false; // already checked
     if (type === 'anime') {
-      return provider.type === 'anime' || provider.value === 'autoEmbed';
+      return provider.type === 'anime';
     }
     return provider.type !== 'anime';
-  });
+  }).slice(0, 5); // limit to top 5 providers per request
 
-  // Search/resolve providers in parallel with timeout
+  // Search/resolve fallback providers in parallel with timeout
   const searchPromises = targetProviders.map(provider => {
     return withTimeout(
       (async () => {
         const t0 = Date.now();
         try {
-          // Direct fast-path for MultiStream (autoEmbed) if tmdbId is present
-          if (provider.value === 'autoEmbed' && tmdbId) {
-            try {
-              const payload = JSON.stringify({
-                tmdbId: String(tmdbId),
-                imdbId: imdbId || undefined,
-                type: type === 'tv' ? 'series' : 'movie',
-                season: season || 1,
-                episode: episode || 1,
-                title: cleanTitle,
-                year: year ? String(year) : undefined,
-              });
-              const directStreams = await getProviderStream({
-                providerValue: 'autoEmbed',
-                link: payload,
-                type,
-              });
-              if (directStreams && directStreams.length > 0) {
-                console.log(`[Provider] MultiStream (Direct TMDB) SUCCESS in ${Date.now() - t0}ms (${directStreams.length} streams)`);
-                return {
-                  providerValue: 'autoEmbed',
-                  providerName: 'MultiStream',
-                  streams: directStreams,
-                  infoTitle: cleanTitle,
-                };
-              }
-            } catch (err) {
-              console.warn(`[Provider] MultiStream direct resolution attempt failed, falling back to search:`, err);
-            }
-          }
-
           // 1. Search provider
           const posts = await searchProvider({
             providerValue: provider.value,

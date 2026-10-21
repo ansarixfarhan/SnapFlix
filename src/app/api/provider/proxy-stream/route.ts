@@ -36,6 +36,17 @@ export async function GET(request: NextRequest) {
     customHeaders['Range'] = clientRange;
   }
 
+  // Derive public origin, avoiding 0.0.0.0:10000 on hosting platforms like Render
+  const host =
+    request.headers.get('x-forwarded-host') ||
+    request.headers.get('host') ||
+    'api.snapflix.indevs.in';
+  const proto = request.headers.get('x-forwarded-proto') || 'https';
+  const cleanHost = (host.includes('0.0.0.0') || host.includes('localhost'))
+    ? 'api.snapflix.indevs.in'
+    : host;
+  const requestOrigin = `${proto}://${cleanHost}`;
+
   const isLikelyM3u8 =
     targetUrl.includes('.m3u8') ||
     targetUrl.includes('playlist') ||
@@ -48,6 +59,12 @@ export async function GET(request: NextRequest) {
       validateStatus: () => true,
       timeout: 20000,
       maxRedirects: 5,
+      beforeRedirect: (options: any) => {
+        if (!options.headers) options.headers = {};
+        if (customHeaders['Referer']) options.headers['Referer'] = customHeaders['Referer'];
+        if (customHeaders['Origin']) options.headers['Origin'] = customHeaders['Origin'];
+        if (customHeaders['User-Agent']) options.headers['User-Agent'] = customHeaders['User-Agent'];
+      },
     });
 
     if (upstreamRes.status >= 400 && upstreamRes.status !== 206) {
@@ -66,7 +83,6 @@ export async function GET(request: NextRequest) {
     if (isM3u8 && typeof upstreamRes.data === 'string') {
       const manifestText = upstreamRes.data;
       const baseUrl = new URL(targetUrl);
-      const requestOrigin = request.nextUrl.origin;
 
       // Rewrite manifest URLs to route through proxy-stream
       const rewrittenLines = manifestText.split('\n').map((line: string) => {

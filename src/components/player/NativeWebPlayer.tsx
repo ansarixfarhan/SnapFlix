@@ -473,6 +473,7 @@ export default function NativeWebPlayer({
 
   // Audio & Multi-Track States
   const resumeTimeRef = useRef<number | null>(null);
+  const failedStreamLinksRef = useRef<Set<string>>(new Set());
   const [activeLanguage, setActiveLanguage] = useState<string>('English');
   const [hlsAudioTracks, setHlsAudioTracks] = useState<any[]>([]);
   const [currentHlsAudioTrack, setCurrentHlsAudioTrack] = useState<number>(-1);
@@ -1028,13 +1029,18 @@ export default function NativeWebPlayer({
   const handleAutoFailover = useCallback(() => {
     if (!selectedStream || providerResults.length === 0) return false;
 
+    // Mark current failing stream so we don't retry it in a ping-pong loop
+    failedStreamLinksRef.current.add(selectedStream.link);
+
+    // 1. First priority: alternative stream with matching active language
     for (const prov of providerResults) {
       const altMatch = prov.streams.find((s) => {
         const isPlayable =
           (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
           s.type !== 'mkv' &&
           !s.link?.toLowerCase().endsWith('.mkv') &&
-          s.link !== selectedStream.link;
+          s.link !== selectedStream.link &&
+          !failedStreamLinksRef.current.has(s.link);
         if (!isPlayable) return false;
 
         const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
@@ -1048,6 +1054,27 @@ export default function NativeWebPlayer({
         return true;
       }
     }
+
+    // 2. Secondary fallback: any other playable stream that hasn't failed yet
+    for (const prov of providerResults) {
+      const fallbackMatch = prov.streams.find((s) => {
+        return (
+          (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
+          s.type !== 'mkv' &&
+          !s.link?.toLowerCase().endsWith('.mkv') &&
+          s.link !== selectedStream.link &&
+          !failedStreamLinksRef.current.has(s.link)
+        );
+      });
+
+      if (fallbackMatch) {
+        console.log(`[Player] Secondary auto-failover to alternative server: ${prov.providerName} (${fallbackMatch.server})`);
+        resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
+        setSelectedStream({ ...fallbackMatch, providerName: prov.providerName });
+        return true;
+      }
+    }
+
     return false;
   }, [selectedStream, providerResults, activeLanguage, originalLanguage, currentTime]);
 
@@ -1074,6 +1101,7 @@ export default function NativeWebPlayer({
       setLoadingStreams(true);
       setError(null);
       setSelectedStream(null);
+      failedStreamLinksRef.current.clear();
 
       try {
         const params = new URLSearchParams({

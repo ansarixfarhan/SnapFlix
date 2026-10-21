@@ -19,7 +19,12 @@ const HomePage: NextPage<HomePageProps> = async ({ searchParams }) => {
   const headerList = await headers();
   const host = headerList.get("x-forwarded-host") || headerList.get("host") || "";
 
-  if (host.includes("api.snapflix.indevs.in") || host.startsWith("api.")) {
+  const isBackendHost =
+    host.includes("api.snapflix.indevs.in") ||
+    host.startsWith("api.") ||
+    host.includes("onrender.com");
+
+  if (isBackendHost) {
     return (
       <div className="min-h-screen bg-[#0d1117] text-[#c9d1d9] p-8 font-mono text-sm">
         <pre className="whitespace-pre-wrap leading-relaxed max-w-3xl">

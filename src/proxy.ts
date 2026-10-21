@@ -37,8 +37,13 @@ export async function proxy(request: NextRequest) {
     "";
   const pathname = request.nextUrl.pathname;
 
-  // If visiting the backend API domain (api.snapflix.indevs.in)
-  if (host.includes("api.snapflix.indevs.in") || host.startsWith("api.")) {
+  // If visiting the backend API domain (api.snapflix.indevs.in, onrender.com, etc.)
+  const isBackendHost =
+    host.includes("api.snapflix.indevs.in") ||
+    host.startsWith("api.") ||
+    host.includes("onrender.com");
+
+  if (isBackendHost) {
     // If accessing root, non-API routes, or bare /api
     const isBareApi = pathname === "/api" || pathname === "/api/";
     const isNonApi = !pathname.startsWith("/api/");

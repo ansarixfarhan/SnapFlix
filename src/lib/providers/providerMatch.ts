@@ -213,10 +213,9 @@ export async function resolveStreamAcrossProviders({
 
   if (!cleanTitle && !tmdbId) return [];
 
-  const directResults: ResolvedProviderResult[] = [];
-
-  // 1. Direct Fast Path (MultiStream autoEmbed via TMDB ID)
-  if (tmdbId) {
+  // 1. Direct Fast Path (MultiStream autoEmbed via TMDB ID) - launched in parallel
+  const autoEmbedPromise = (async (): Promise<ResolvedProviderResult | null> => {
+    if (!tmdbId) return null;
     try {
       const payload = JSON.stringify({
         tmdbId: String(tmdbId),
@@ -239,17 +238,18 @@ export async function resolveStreamAcrossProviders({
       );
       if (directStreams && directStreams.length > 0) {
         console.log(`[Provider] MultiStream (Direct TMDB) SUCCESS (${directStreams.length} streams)`);
-        directResults.push({
+        return {
           providerValue: 'autoEmbed',
           providerName: 'MultiStream',
           streams: directStreams,
           infoTitle: cleanTitle,
-        });
+        };
       }
     } catch (err) {
       console.warn(`[Provider] MultiStream direct resolution attempt failed:`, err);
     }
-  }
+    return null;
+  })();
 
   // 2. Select targeted batch of top verified providers for high resolution rate
   const targetProviders =
@@ -421,10 +421,10 @@ export async function resolveStreamAcrossProviders({
     );
   });
 
-  const settled = await Promise.allSettled(providerPromises);
-  const valid: ResolvedProviderResult[] = [...directResults];
+  const settled = await Promise.allSettled([autoEmbedPromise, ...providerPromises]);
+  const valid: ResolvedProviderResult[] = [];
   for (const item of settled) {
-    if (item.status === 'fulfilled' && item.value && item.value.streams.length > 0) {
+    if (item.status === 'fulfilled' && item.value && item.value.streams && item.value.streams.length > 0) {
       valid.push(item.value);
     }
   }

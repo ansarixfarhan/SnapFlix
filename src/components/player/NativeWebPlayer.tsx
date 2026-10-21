@@ -1157,11 +1157,29 @@ export default function NativeWebPlayer({
 
         // Pick the best streamable stream (m3u8 or mp4) - strictly ignore mkv
         let chosen: StreamItem | null = null;
+
+        // 1. Check for a playable stream with Hindi audio if available
         for (const prov of data.results) {
-          const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
+          const match = prov.streams.find((s: StreamItem) => {
+            if (!isPlayableStream(s)) return false;
+            const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
+            return langs.includes('Hindi');
+          });
           if (match) {
             chosen = { ...match, providerName: prov.providerName };
+            setActiveLanguage('Hindi');
             break;
+          }
+        }
+
+        // 2. Fallback to first playable stream
+        if (!chosen) {
+          for (const prov of data.results) {
+            const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
+            if (match) {
+              chosen = { ...match, providerName: prov.providerName };
+              break;
+            }
           }
         }
 

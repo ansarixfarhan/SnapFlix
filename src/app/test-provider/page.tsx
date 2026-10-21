@@ -181,12 +181,27 @@ export default function TestProviderPage() {
 
         for (const prov of data.results) {
           const streamable = prov.streams.find(
-            (s: StreamItem) => s.type === 'm3u8' || s.link.includes('.m3u8') || s.type === 'mp4'
+            (s: StreamItem) =>
+              (s.type === 'm3u8' || s.link.includes('.m3u8') || s.type === 'mp4') &&
+              (s.server?.toLowerCase().includes('hindi') || prov.infoTitle?.toLowerCase().includes('hindi'))
           );
           if (streamable) {
             bestStream = streamable;
             bestProviderName = prov.providerName;
             break;
+          }
+        }
+
+        if (!bestStream) {
+          for (const prov of data.results) {
+            const streamable = prov.streams.find(
+              (s: StreamItem) => s.type === 'm3u8' || s.link.includes('.m3u8') || s.type === 'mp4'
+            );
+            if (streamable) {
+              bestStream = streamable;
+              bestProviderName = prov.providerName;
+              break;
+            }
           }
         }
 

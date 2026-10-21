@@ -51,14 +51,14 @@ export async function GET(request: NextRequest) {
   const requestOrigin = `${proto}://${cleanHost}`;
 
   const isLikelyM3u8 =
-    targetUrl.includes('.m3u8') ||
+    targetUrl.toLowerCase().includes('m3u8') ||
     targetUrl.includes('playlist') ||
     targetUrl.includes('/hls/');
 
   try {
     const upstreamRes = await axios.get(targetUrl, {
       headers: customHeaders,
-      // For m3u8 we need text to rewrite URLs. For all binary/mp4/ts we MUST use 'stream' to prevent OOM
+      // For m3u8 we request text so we can rewrite URLs. For binary/mp4/ts we use 'stream' to prevent OOM
       responseType: isLikelyM3u8 ? 'text' : 'stream',
       validateStatus: () => true,
       timeout: 30000,
@@ -78,14 +78,26 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const contentType = String(upstreamRes.headers['content-type'] || '');
+    const contentType = String(upstreamRes.headers['content-type'] || '').toLowerCase();
     const isM3u8 =
       isLikelyM3u8 ||
       contentType.includes('mpegurl') ||
-      contentType.includes('application/x-mpegURL');
+      contentType.includes('application/x-mpegurl');
 
-    if (isM3u8 && typeof upstreamRes.data === 'string') {
-      const manifestText = upstreamRes.data;
+    let manifestText = '';
+    if (isM3u8) {
+      if (typeof upstreamRes.data === 'string') {
+        manifestText = upstreamRes.data;
+      } else if (upstreamRes.data && typeof upstreamRes.data[Symbol.asyncIterator] === 'function') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of upstreamRes.data) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        manifestText = Buffer.concat(chunks).toString('utf-8');
+      }
+    }
+
+    if (manifestText && manifestText.includes('#EXTM3U')) {
       const baseUrl = new URL(targetUrl);
 
       // Rewrite manifest URLs to route through proxy-stream

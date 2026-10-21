@@ -137,6 +137,27 @@ export function parseWordToLanguage(word: string): string | null {
   return null;
 }
 
+export function isHlsStream(stream?: StreamItem | null): boolean {
+  if (!stream) return false;
+  const type = (stream.type || '').toLowerCase();
+  const link = (stream.link || '').toLowerCase();
+  return (
+    type === 'm3u8' ||
+    type === 'hls' ||
+    link.includes('m3u8') ||
+    link.includes('playlist') ||
+    link.includes('/hls/')
+  );
+}
+
+export function isPlayableStream(stream?: StreamItem | null): boolean {
+  if (!stream) return false;
+  const type = (stream.type || '').toLowerCase();
+  const link = (stream.link || '').toLowerCase();
+  if (type === 'mkv' || link.endsWith('.mkv') || link.includes('.mkv?')) return false;
+  return isHlsStream(stream) || type === 'mp4' || link.includes('.mp4');
+}
+
 export function getStreamAudioLanguages(
   stream: StreamItem,
   infoTitle?: string,
@@ -627,10 +648,7 @@ export default function NativeWebPlayer({
     providerResults.forEach((prov) => {
       prov.streams.forEach((s) => {
         // Only count playable streams (m3u8 or mp4, not raw mkv)
-        const isPlayable =
-          (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-          s.type !== 'mkv' &&
-          !s.link?.toLowerCase().endsWith('.mkv');
+        const isPlayable = isPlayableStream(s);
         if (!isPlayable) return;
 
         const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
@@ -707,11 +725,7 @@ export default function NativeWebPlayer({
       const currentProv = providerResults.find((p) => p.providerName === selectedStream.providerName);
       if (currentProv) {
         const match = currentProv.streams.find((s) => {
-          const isPlayable =
-            (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-            s.type !== 'mkv' &&
-            !s.link?.toLowerCase().endsWith('.mkv');
-          if (!isPlayable) return false;
+          if (!isPlayableStream(s)) return false;
           const langs = getStreamAudioLanguages(s, currentProv.infoTitle, originalLanguage);
           return langs.includes(targetLang);
         });
@@ -725,11 +739,7 @@ export default function NativeWebPlayer({
     if (!candidateStream) {
       for (const prov of providerResults) {
         const match = prov.streams.find((s) => {
-          const isPlayable =
-            (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-            s.type !== 'mkv' &&
-            !s.link?.toLowerCase().endsWith('.mkv');
-          if (!isPlayable) return false;
+          if (!isPlayableStream(s)) return false;
           const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
           return langs.includes(targetLang);
         });
@@ -772,11 +782,7 @@ export default function NativeWebPlayer({
     // 2. Check all playable streams matching activeLanguage
     providerResults.forEach((prov) => {
       prov.streams.forEach((s) => {
-        const isPlayable =
-          (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-          s.type !== 'mkv' &&
-          !s.link?.toLowerCase().endsWith('.mkv');
-        if (!isPlayable) return;
+        if (!isPlayableStream(s)) return;
 
         const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
         if (!langs.includes(activeLanguage)) return;
@@ -856,11 +862,7 @@ export default function NativeWebPlayer({
     let candidate: StreamItem | null = null;
     for (const prov of providerResults) {
       const match = prov.streams.find((s) => {
-        const isPlayable =
-          (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-          s.type !== 'mkv' &&
-          !s.link?.toLowerCase().endsWith('.mkv');
-        if (!isPlayable) return false;
+        if (!isPlayableStream(s)) return false;
 
         // STRICT AUDIO LANGUAGE MATCH:
         const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
@@ -1036,9 +1038,7 @@ export default function NativeWebPlayer({
     for (const prov of providerResults) {
       const altMatch = prov.streams.find((s) => {
         const isPlayable =
-          (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-          s.type !== 'mkv' &&
-          !s.link?.toLowerCase().endsWith('.mkv') &&
+          isPlayableStream(s) &&
           s.link !== selectedStream.link &&
           !failedStreamLinksRef.current.has(s.link);
         if (!isPlayable) return false;
@@ -1059,9 +1059,7 @@ export default function NativeWebPlayer({
     for (const prov of providerResults) {
       const fallbackMatch = prov.streams.find((s) => {
         return (
-          (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-          s.type !== 'mkv' &&
-          !s.link?.toLowerCase().endsWith('.mkv') &&
+          isPlayableStream(s) &&
           s.link !== selectedStream.link &&
           !failedStreamLinksRef.current.has(s.link)
         );
@@ -1081,12 +1079,7 @@ export default function NativeWebPlayer({
   // Compute first playable stream (for quick-switch when MKV or error occurs)
   const firstPlayableStream = useMemo(() => {
     for (const prov of providerResults) {
-      const match = prov.streams.find(
-        (s) =>
-          (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-          s.type !== 'mkv' &&
-          !s.link?.toLowerCase().endsWith('.mkv')
-      );
+      const match = prov.streams.find((s) => isPlayableStream(s));
       if (match) {
         return { ...match, providerName: prov.providerName };
       }
@@ -1144,12 +1137,7 @@ export default function NativeWebPlayer({
         // Pick the best streamable stream (m3u8 or mp4) - strictly ignore mkv
         let chosen: StreamItem | null = null;
         for (const prov of data.results) {
-          const match = prov.streams.find(
-            (s: StreamItem) =>
-              (s.type === 'm3u8' || s.link?.includes('.m3u8') || s.type === 'mp4') &&
-              s.type !== 'mkv' &&
-              !s.link?.toLowerCase().endsWith('.mkv')
-          );
+          const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
           if (match) {
             chosen = { ...match, providerName: prov.providerName };
             break;
@@ -1245,7 +1233,7 @@ export default function NativeWebPlayer({
     if (!selectedStream || !videoRef.current) return;
 
     const streamUrl = getPlayableUrl(selectedStream);
-    const isHls = selectedStream.type === 'm3u8' || selectedStream.link.includes('.m3u8');
+    const isHls = isHlsStream(selectedStream);
     const isMkv = selectedStream.type === 'mkv' || selectedStream.link.includes('.mkv');
 
     const seekTo = resumeTimeRef.current !== null ? resumeTimeRef.current : (initialTime || 0);

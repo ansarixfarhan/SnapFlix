@@ -1188,8 +1188,20 @@ export default function NativeWebPlayer({
     };
   }, [tmdbId, title, year, type, season, episode]);
 
-  // 2. Playable URL: Direct CDN playback is prioritized to avoid Datacenter IP blocks and 500 proxy errors
+  // 2. Playable URL with Proxy rewrite
   const getPlayableUrl = useCallback((stream: StreamItem) => {
+    const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
+
+    // Streams with custom request headers (e.g. Referer or Origin like Movy/Phoenix) MUST be routed through
+    // proxy-stream because the browser cannot set custom Referer/Origin headers on XMLHttpRequest.
+    // Streams without custom headers play directly in the browser to avoid server bottlenecks.
+    if (hasHeaders) {
+      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+      const headersJson = JSON.stringify(stream.headers || {});
+      return `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
+        stream.link
+      )}&headers=${encodeURIComponent(headersJson)}`;
+    }
     return stream.link;
   }, []);
 

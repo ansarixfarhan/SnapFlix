@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
     if (isM3u8) {
       const manifestText = await upstreamRes.text();
       const baseUrl = new URL(targetUrl);
+      const requestOrigin = request.nextUrl.origin;
 
       // Rewrite manifest URLs to route through proxy-stream
       const rewrittenLines = manifestText.split('\n').map((line) => {
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
         if (trimmed.startsWith('#') && trimmed.includes('URI=')) {
           return trimmed.replace(/URI="([^"]+)"/g, (match, uri) => {
             const resolved = new URL(uri, baseUrl).toString();
-            const proxied = `/api/provider/proxy-stream?url=${encodeURIComponent(
+            const proxied = `${requestOrigin}/api/provider/proxy-stream?url=${encodeURIComponent(
               resolved
             )}&headers=${encodeURIComponent(JSON.stringify(customHeaders))}`;
             return `URI="${proxied}"`;
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
         // Segment or child playlist URLs
         if (!trimmed.startsWith('#')) {
           const resolved = new URL(trimmed, baseUrl).toString();
-          return `/api/provider/proxy-stream?url=${encodeURIComponent(
+          return `${requestOrigin}/api/provider/proxy-stream?url=${encodeURIComponent(
             resolved
           )}&headers=${encodeURIComponent(JSON.stringify(customHeaders))}`;
         }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -35,37 +36,46 @@ export async function GET(request: NextRequest) {
     customHeaders['Range'] = clientRange;
   }
 
+  const isLikelyM3u8 =
+    targetUrl.includes('.m3u8') ||
+    targetUrl.includes('playlist') ||
+    targetUrl.includes('/hls/');
+
   try {
-    const upstreamRes = await fetch(targetUrl, {
+    const upstreamRes = await axios.get(targetUrl, {
       headers: customHeaders,
+      responseType: isLikelyM3u8 ? 'text' : 'arraybuffer',
+      validateStatus: () => true,
+      timeout: 20000,
+      maxRedirects: 5,
     });
 
-    if (!upstreamRes.ok && upstreamRes.status !== 206) {
+    if (upstreamRes.status >= 400 && upstreamRes.status !== 206) {
       return new NextResponse(`Upstream error: ${upstreamRes.status} ${upstreamRes.statusText}`, {
         status: upstreamRes.status,
         headers: CORS_HEADERS,
       });
     }
 
-    const contentType = upstreamRes.headers.get('content-type') || '';
+    const contentType = String(upstreamRes.headers['content-type'] || '');
     const isM3u8 =
-      targetUrl.includes('.m3u8') ||
+      isLikelyM3u8 ||
       contentType.includes('mpegurl') ||
       contentType.includes('application/x-mpegURL');
 
-    if (isM3u8) {
-      const manifestText = await upstreamRes.text();
+    if (isM3u8 && typeof upstreamRes.data === 'string') {
+      const manifestText = upstreamRes.data;
       const baseUrl = new URL(targetUrl);
       const requestOrigin = request.nextUrl.origin;
 
       // Rewrite manifest URLs to route through proxy-stream
-      const rewrittenLines = manifestText.split('\n').map((line) => {
+      const rewrittenLines = manifestText.split('\n').map((line: string) => {
         const trimmed = line.trim();
         if (!trimmed) return line;
 
         // Attribute URIs like URI="..."
         if (trimmed.startsWith('#') && trimmed.includes('URI=')) {
-          return trimmed.replace(/URI="([^"]+)"/g, (match, uri) => {
+          return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
             const resolved = new URL(uri, baseUrl).toString();
             const proxied = `${requestOrigin}/api/provider/proxy-stream?url=${encodeURIComponent(
               resolved
@@ -86,6 +96,7 @@ export async function GET(request: NextRequest) {
       });
 
       return new NextResponse(rewrittenLines.join('\n'), {
+        status: upstreamRes.status,
         headers: {
           'Content-Type': 'application/vnd.apple.mpegurl',
           ...CORS_HEADERS,
@@ -94,7 +105,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Binary stream (e.g. video/mp2t TS segment or mp4 video)
+    // Binary stream (e.g. video/mp2t TS segment or mp4 video or image)
     const responseHeaders: Record<string, string> = {
       'Content-Type': contentType || 'video/mp2t',
       ...CORS_HEADERS,
@@ -102,18 +113,23 @@ export async function GET(request: NextRequest) {
       'Cache-Control': 'public, max-age=86400',
     };
 
-    const contentRange = upstreamRes.headers.get('content-range');
-    if (contentRange) responseHeaders['Content-Range'] = contentRange;
+    if (upstreamRes.headers['content-range']) {
+      responseHeaders['Content-Range'] = String(upstreamRes.headers['content-range']);
+    }
+    if (upstreamRes.headers['content-length']) {
+      responseHeaders['Content-Length'] = String(upstreamRes.headers['content-length']);
+    }
 
-    const contentLength = upstreamRes.headers.get('content-length');
-    if (contentLength) responseHeaders['Content-Length'] = contentLength;
+    const binaryData = Buffer.isBuffer(upstreamRes.data)
+      ? upstreamRes.data
+      : Buffer.from(upstreamRes.data);
 
-    return new NextResponse(upstreamRes.body, {
+    return new NextResponse(binaryData, {
       status: upstreamRes.status,
       headers: responseHeaders,
     });
   } catch (e: any) {
-    console.error('[ProxyStream Error]', e);
+    console.error('[ProxyStream Error]', e?.message || e);
     return new NextResponse(e?.message || 'Proxy error', {
       status: 500,
       headers: CORS_HEADERS,
@@ -127,4 +143,3 @@ export async function OPTIONS() {
     headers: CORS_HEADERS,
   });
 }
-

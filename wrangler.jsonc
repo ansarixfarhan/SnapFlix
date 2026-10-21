@@ -22,5 +22,8 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    "NEXT_PUBLIC_BACKEND_URL": "https://api.snapflix.indevs.in"
+  },
   "previews": {}
 }

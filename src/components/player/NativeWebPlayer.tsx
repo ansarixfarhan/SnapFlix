@@ -1369,9 +1369,27 @@ export default function NativeWebPlayer({
         videoRef.current.play().catch(() => { });
       }
     } else {
-      videoRef.current.src = streamUrl;
-      if (seekTo > 0) videoRef.current.currentTime = seekTo;
-      videoRef.current.play().catch(() => { });
+      const videoEl = videoRef.current;
+      videoEl.src = streamUrl;
+      if (seekTo > 0) videoEl.currentTime = seekTo;
+
+      const handleNativeError = () => {
+        console.warn('[Player] Native MP4 video error, triggering auto-failover');
+        if (!handleAutoFailover()) {
+          setPlaybackError('Stream failed to load on this server. Please choose another server or player.');
+        }
+      };
+
+      videoEl.addEventListener('error', handleNativeError, { once: true });
+      videoEl.play().catch(() => { });
+
+      return () => {
+        videoEl.removeEventListener('error', handleNativeError);
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        }
+      };
     }
 
     return () => {

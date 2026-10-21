@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
+import { Readable } from 'stream';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
   'Access-Control-Allow-Headers': '*',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges',
 };
 
 export async function GET(request: NextRequest) {
@@ -42,9 +44,10 @@ export async function GET(request: NextRequest) {
     request.headers.get('host') ||
     'api.snapflix.indevs.in';
   const proto = request.headers.get('x-forwarded-proto') || 'https';
-  const cleanHost = (host.includes('0.0.0.0') || host.includes('localhost'))
-    ? 'api.snapflix.indevs.in'
-    : host;
+  const cleanHost =
+    host.includes('0.0.0.0') || host.includes('localhost')
+      ? 'api.snapflix.indevs.in'
+      : host;
   const requestOrigin = `${proto}://${cleanHost}`;
 
   const isLikelyM3u8 =
@@ -55,9 +58,10 @@ export async function GET(request: NextRequest) {
   try {
     const upstreamRes = await axios.get(targetUrl, {
       headers: customHeaders,
-      responseType: isLikelyM3u8 ? 'text' : 'arraybuffer',
+      // For m3u8 we need text to rewrite URLs. For all binary/mp4/ts we MUST use 'stream' to prevent OOM
+      responseType: isLikelyM3u8 ? 'text' : 'stream',
       validateStatus: () => true,
-      timeout: 20000,
+      timeout: 30000,
       maxRedirects: 5,
       beforeRedirect: (options: any) => {
         if (!options.headers) options.headers = {};
@@ -121,9 +125,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Binary stream (e.g. video/mp2t TS segment or mp4 video or image)
+    // Binary stream (e.g. video/mp4 video or TS segment): Stream directly with ZERO memory buffering
     const responseHeaders: Record<string, string> = {
-      'Content-Type': contentType || 'video/mp2t',
+      'Content-Type': contentType || 'video/mp4',
       ...CORS_HEADERS,
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'public, max-age=86400',
@@ -136,11 +140,12 @@ export async function GET(request: NextRequest) {
       responseHeaders['Content-Length'] = String(upstreamRes.headers['content-length']);
     }
 
-    const binaryData = Buffer.isBuffer(upstreamRes.data)
-      ? upstreamRes.data
-      : Buffer.from(upstreamRes.data);
+    // Convert Node Readable stream to Web ReadableStream for zero-copy streaming
+    const webStream = typeof (Readable as any).toWeb === 'function' && upstreamRes.data?.pipe
+      ? (Readable as any).toWeb(upstreamRes.data)
+      : upstreamRes.data;
 
-    return new NextResponse(binaryData, {
+    return new NextResponse(webStream, {
       status: upstreamRes.status,
       headers: responseHeaders,
     });

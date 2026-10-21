@@ -130,7 +130,13 @@ export function parseWordToLanguage(word: string): string | null {
   const s = word.toLowerCase().trim();
   if (!s) return null;
   for (const [lang, aliases] of Object.entries(LANG_CODE_ALIASES)) {
-    if (aliases.some((a) => s === a || s.includes(a))) {
+    const matched = aliases.some((a) => {
+      if (a.length <= 3) {
+        return new RegExp(`\\b${a}\\b`, 'i').test(s) || s === a;
+      }
+      return s.includes(a);
+    });
+    if (matched) {
       return lang;
     }
   }
@@ -167,38 +173,46 @@ export function getStreamAudioLanguages(
   const server = (stream.server || '').trim();
   const tag = (stream.tag || '').trim();
   const title = (infoTitle || '').trim().toLowerCase();
+  const sLower = server.toLowerCase();
 
   const langs = new Set<string>();
 
   // 1. Check parentheses in server string: e.g. 'Movy - Delhi (Hindi) (Tamil)' -> ['Hindi', 'Tamil']
-  // In MultiStream, the last parenthesis indicates the specific audio track!
   const parenMatches = Array.from(server.matchAll(/\(([^)]+)\)/g)).map((m) => m[1]);
-  if (parenMatches.length > 0) {
-    // Check if the last parenthesis is a language
-    const lastParenLang = parseWordToLanguage(parenMatches[parenMatches.length - 1]);
-    if (lastParenLang) {
-      langs.add(lastParenLang);
-      return Array.from(langs);
-    }
-    // If last parenthesis was resolution (e.g. '(Hindi) (1080p)' or '(Hindi) (2160p)'), check previous
-    for (let i = parenMatches.length - 2; i >= 0; i--) {
-      const match = parseWordToLanguage(parenMatches[i]);
-      if (match) {
-        langs.add(match);
-        return Array.from(langs);
-      }
+  for (const p of parenMatches) {
+    const pLang = parseWordToLanguage(p);
+    if (pLang) {
+      langs.add(pLang);
     }
   }
+  if (langs.size > 0) {
+    return Array.from(langs);
+  }
 
-  // 2. Direct language check in server name or tag (excluding 'multi' resolution descriptors)
-  const directServerLang = parseWordToLanguage(server) || parseWordToLanguage(tag);
-  if (directServerLang) {
-    langs.add(directServerLang);
+  // 2. Direct language check across all known languages in server name or tag
+  // Handles strings with multiple languages like: "Hindi, English, Tamil, Telugu, Japanese"
+  for (const [lang, aliases] of Object.entries(LANG_CODE_ALIASES)) {
+    const matched = aliases.some((a) => {
+      if (a.length <= 3) {
+        return (
+          new RegExp(`\\b${a}\\b`, 'i').test(server) ||
+          new RegExp(`\\b${a}\\b`, 'i').test(tag)
+        );
+      }
+      return (
+        server.toLowerCase().includes(a) ||
+        tag.toLowerCase().includes(a)
+      );
+    });
+    if (matched) {
+      langs.add(lang);
+    }
+  }
+  if (langs.size > 0) {
     return Array.from(langs);
   }
 
   // 3. 'Original' / 'Original Audio' -> movie's original language (e.g. MovieBox)
-  const sLower = server.toLowerCase();
   if (sLower.includes('original')) {
     langs.add(defaultLang);
     return Array.from(langs);
@@ -209,9 +223,16 @@ export function getStreamAudioLanguages(
     langs.add('Hindi');
     langs.add('English');
   } else {
-    const titleLang = parseWordToLanguage(title);
-    if (titleLang) {
-      langs.add(titleLang);
+    for (const [lang, aliases] of Object.entries(LANG_CODE_ALIASES)) {
+      const matched = aliases.some((a) => {
+        if (a.length <= 3) {
+          return new RegExp(`\\b${a}\\b`, 'i').test(title);
+        }
+        return title.includes(a);
+      });
+      if (matched) {
+        langs.add(lang);
+      }
     }
   }
 

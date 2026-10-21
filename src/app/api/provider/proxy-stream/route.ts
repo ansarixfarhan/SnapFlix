@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Allow-Headers': '*',
+};
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
   const headersParam = searchParams.get('headers');
 
   if (!targetUrl) {
-    return new NextResponse('Missing url parameter', { status: 400 });
+    return new NextResponse('Missing url parameter', {
+      status: 400,
+      headers: CORS_HEADERS,
+    });
   }
 
   let customHeaders: Record<string, string> = {
@@ -34,6 +43,7 @@ export async function GET(request: NextRequest) {
     if (!upstreamRes.ok && upstreamRes.status !== 206) {
       return new NextResponse(`Upstream error: ${upstreamRes.status} ${upstreamRes.statusText}`, {
         status: upstreamRes.status,
+        headers: CORS_HEADERS,
       });
     }
 
@@ -77,9 +87,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(rewrittenLines.join('\n'), {
         headers: {
           'Content-Type': 'application/vnd.apple.mpegurl',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-          'Access-Control-Allow-Headers': '*',
+          ...CORS_HEADERS,
           'Cache-Control': 'no-cache',
         },
       });
@@ -88,9 +96,7 @@ export async function GET(request: NextRequest) {
     // Binary stream (e.g. video/mp2t TS segment or mp4 video)
     const responseHeaders: Record<string, string> = {
       'Content-Type': contentType || 'video/mp2t',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-      'Access-Control-Allow-Headers': '*',
+      ...CORS_HEADERS,
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'public, max-age=86400',
     };
@@ -107,17 +113,17 @@ export async function GET(request: NextRequest) {
     });
   } catch (e: any) {
     console.error('[ProxyStream Error]', e);
-    return new NextResponse(e?.message || 'Proxy error', { status: 500 });
+    return new NextResponse(e?.message || 'Proxy error', {
+      status: 500,
+      headers: CORS_HEADERS,
+    });
   }
 }
 
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': '*',
-    },
+    headers: CORS_HEADERS,
   });
 }
+

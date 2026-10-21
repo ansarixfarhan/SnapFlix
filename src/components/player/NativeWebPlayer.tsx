@@ -1188,19 +1188,8 @@ export default function NativeWebPlayer({
     };
   }, [tmdbId, title, year, type, season, episode]);
 
-  // 2. Playable URL with Proxy rewrite
+  // 2. Playable URL: Direct CDN playback is prioritized to avoid Datacenter IP blocks and 500 proxy errors
   const getPlayableUrl = useCallback((stream: StreamItem) => {
-    const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
-
-    // Only route through server proxy if the stream explicitly specifies custom request headers (e.g. Referer or User-Agent).
-    // Standard direct streams (HLS/MP4) without custom headers MUST be played directly by the browser to avoid Cloudflare Worker 403 blocks and subrequest limits.
-    if (hasHeaders) {
-      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
-      const headersJson = JSON.stringify(stream.headers || {});
-      return `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
-        stream.link
-      )}&headers=${encodeURIComponent(headersJson)}`;
-    }
     return stream.link;
   }, []);
 
@@ -1305,6 +1294,19 @@ export default function NativeWebPlayer({
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
+                // If direct failed and stream has custom headers, try proxy as fallback
+                const hasHeaders = selectedStream.headers && Object.keys(selectedStream.headers).length > 0;
+                if (hasHeaders && hls.url && !hls.url.includes('proxy-stream')) {
+                  const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+                  const headersJson = JSON.stringify(selectedStream.headers || {});
+                  const proxyUrl = `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
+                    selectedStream.link
+                  )}&headers=${encodeURIComponent(headersJson)}`;
+                  console.warn('[Player] Direct stream failed, attempting proxy fallback:', proxyUrl);
+                  hls.loadSource(proxyUrl);
+                  hls.startLoad();
+                  return;
+                }
                 if (!handleAutoFailover()) {
                   hls.startLoad();
                 }

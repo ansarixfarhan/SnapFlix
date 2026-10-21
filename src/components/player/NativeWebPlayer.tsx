@@ -1088,7 +1088,8 @@ export default function NativeWebPlayer({
           if (episode) params.append('episode', String(episode));
         }
 
-        const res = await fetch(`/api/provider/resolve?${params.toString()}`);
+        const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+        const res = await fetch(`${providerApiBase}/api/provider/resolve?${params.toString()}`);
         const data = await res.json();
 
         if (!active) return;
@@ -1129,7 +1130,8 @@ export default function NativeWebPlayer({
           try {
             const bgParams = new URLSearchParams(params);
             bgParams.append('refresh', 'true');
-            const bgRes = await fetch(`/api/provider/resolve?${bgParams.toString()}`);
+            const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+            const bgRes = await fetch(`${providerApiBase}/api/provider/resolve?${bgParams.toString()}`);
             const bgData = await bgRes.json();
             if (active && bgData.success && Array.isArray(bgData.results)) {
               setProviderResults((prev) => {
@@ -1180,8 +1182,9 @@ export default function NativeWebPlayer({
     // Only route through server proxy if the stream explicitly specifies custom request headers (e.g. Referer or User-Agent).
     // Standard direct streams (HLS/MP4) without custom headers MUST be played directly by the browser to avoid Cloudflare Worker 403 blocks and subrequest limits.
     if (hasHeaders) {
+      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
       const headersJson = JSON.stringify(stream.headers || {});
-      return `/api/provider/proxy-stream?url=${encodeURIComponent(
+      return `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
         stream.link
       )}&headers=${encodeURIComponent(headersJson)}`;
     }

@@ -63,8 +63,9 @@ export default function TestProviderPage() {
     const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
 
     if (isHls || hasHeaders) {
+      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
       const headersJson = JSON.stringify(stream.headers || {});
-      return `/api/provider/proxy-stream?url=${encodeURIComponent(
+      return `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
         stream.link
       )}&headers=${encodeURIComponent(headersJson)}`;
     }
@@ -163,7 +164,8 @@ export default function TestProviderPage() {
         params.append('episode', episode);
       }
 
-      const res = await fetch(`/api/provider/resolve?${params.toString()}`);
+      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+      const res = await fetch(`${providerApiBase}/api/provider/resolve?${params.toString()}`);
       const data = await res.json();
 
       if (!data.success) {

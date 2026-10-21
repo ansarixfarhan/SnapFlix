@@ -158,18 +158,24 @@ export interface ResolvedProviderResult {
   infoTitle?: string;
 }
 
-// 12-second timeout per provider to allow deep scrapers (MultiStream, 4khdHub, Castle) to complete
-const PROVIDER_TIMEOUT_MS = 12000;
+// 10-second timeout per provider to allow deep scrapers while preventing Cloudflare Worker execution limits
+const PROVIDER_TIMEOUT_MS = 10000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T, name: string): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`[Provider] ${name} TIMED OUT after ${ms}ms`);
+      resolve(fallback);
+    }, ms);
+  });
+
   return Promise.race([
-    promise,
-    new Promise<T>((resolve) =>
-      setTimeout(() => {
-        console.warn(`[Provider] ${name} TIMED OUT after ${ms}ms`);
-        resolve(fallback);
-      }, ms)
-    ),
+    promise.then((res) => {
+      clearTimeout(timer);
+      return res;
+    }),
+    timeoutPromise,
   ]);
 }
 
@@ -182,7 +188,31 @@ export async function resolveStreamAcrossProviders({
   season,
   episode,
 }: ResolveStreamParams): Promise<ResolvedProviderResult[]> {
-  const cleanTitle = title.trim();
+  let cleanTitle = title.trim();
+  let cleanYear = year ? String(year).trim() : '';
+
+  // If title is missing or placeholder, resolve from resilient TMDB mirror
+  if ((!cleanTitle || cleanTitle.toLowerCase() === 'movie' || cleanTitle.toLowerCase() === 'tv series') && tmdbId) {
+    try {
+      const endpoint = `https://db.wecollege.net/3/${type === 'tv' ? 'tv' : 'movie'}/${tmdbId}`;
+      const res = await fetch(endpoint, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          Origin: 'https://www.movy.sx',
+          Referer: 'https://www.movy.sx/',
+        },
+      });
+      if (res.ok) {
+        const d: any = await res.json();
+        cleanTitle = (d.title || d.name || d.original_title || d.original_name || '').trim();
+        const dDate = d.release_date || d.first_air_date || '';
+        if (!cleanYear && dDate) cleanYear = dDate.split('-')[0];
+      }
+    } catch (e) {
+      console.warn('[Provider] cleanTitle auto-resolution failed:', e);
+    }
+  }
+
   if (!cleanTitle && !tmdbId) return [];
 
   // 1. Direct Ultra-Fast Path (MultiStream autoEmbed via TMDB ID)
@@ -195,13 +225,18 @@ export async function resolveStreamAcrossProviders({
         season: season || 1,
         episode: episode || 1,
         title: cleanTitle,
-        year: year ? String(year) : undefined,
+        year: cleanYear || undefined,
       });
-      const directStreams = await getProviderStream({
-        providerValue: 'autoEmbed',
-        link: payload,
-        type,
-      });
+      const directStreams = await withTimeout(
+        getProviderStream({
+          providerValue: 'autoEmbed',
+          link: payload,
+          type,
+        }),
+        8500,
+        [],
+        'MultiStream'
+      );
       if (directStreams && directStreams.length > 0) {
         console.log(`[Provider] MultiStream (Direct TMDB) SUCCESS (${directStreams.length} streams)`);
         return [
@@ -229,171 +264,177 @@ export async function resolveStreamAcrossProviders({
         ]
       : ACTIVE_PROVIDERS.filter(p => p.type !== 'anime' && p.value !== 'autoEmbed').slice(0, 5);
 
-  // Search/resolve fallback providers in parallel with timeout
-  const searchPromises = targetProviders.map(provider => {
-    return withTimeout(
-      (async () => {
-        const t0 = Date.now();
-        try {
-          // 1. Search provider
-          const posts = await searchProvider({
-            providerValue: provider.value,
-            query: cleanTitle,
-          });
+  // 3. Fallback Providers: Resolve SEQUENTIALLY with early break upon first success.
+  // This is CRITICAL for serverless/edge workers to stay within RAM and CPU limits (avoids Error 1102).
+  const valid: ResolvedProviderResult[] = [];
 
-          if (!posts || posts.length === 0) return null;
+  for (const provider of targetProviders) {
+    try {
+      const providerRes = await withTimeout(
+        (async () => {
+          const t0 = Date.now();
+          try {
+            // 1. Search provider
+            const posts = await searchProvider({
+              providerValue: provider.value,
+              query: cleanTitle,
+            });
 
-          // 2. Score candidates
-          const isTvSeries = type === 'tv';
-          const scored = posts
-            .map(post => {
-              let score = scoreTitleMatch({
-                candidateTitle: post.title,
-                targetTitle: cleanTitle,
-                candidateYear: post.year || post.title,
-                targetYear: year,
-                isTvSeries,
-              });
+            if (!posts || posts.length === 0) return null;
 
-              const isSeries =
-                post.type === 'series' ||
-                post.type === 'tv' ||
-                (typeof post.link === 'string' && post.link.includes('/series/')) ||
-                (typeof post.link === 'string' && post.link.includes('Drama'));
+            // 2. Score candidates
+            const isTvSeries = type === 'tv';
+            const scored = posts
+              .map(post => {
+                let score = scoreTitleMatch({
+                  candidateTitle: post.title,
+                  targetTitle: cleanTitle,
+                  candidateYear: post.year || post.title,
+                  targetYear: cleanYear || year,
+                  isTvSeries,
+                });
 
-              if (type === 'movie' && isSeries) score -= 45;
-              if (type === 'tv' && !isSeries && (post.type === 'movie' || (typeof post.link === 'string' && post.link.includes('/movie/')))) {
-                score -= 45;
-              }
+                const isSeries =
+                  post.type === 'series' ||
+                  post.type === 'tv' ||
+                  (typeof post.link === 'string' && post.link.includes('/series/')) ||
+                  (typeof post.link === 'string' && post.link.includes('Drama'));
 
-              return { post, score };
-            })
-            .filter(item => item.score >= 45)
-            .sort((a, b) => b.score - a.score);
+                if (type === 'movie' && isSeries) score -= 45;
+                if (type === 'tv' && !isSeries && (post.type === 'movie' || (typeof post.link === 'string' && post.link.includes('/movie/')))) {
+                  score -= 45;
+                }
 
-          if (scored.length === 0) return null;
+                return { post, score };
+              })
+              .filter(item => item.score >= 45)
+              .sort((a, b) => b.score - a.score);
 
-          const bestPost = scored[0].post;
+            if (scored.length === 0) return null;
 
-          // 3. Fetch meta for best post
-          const meta = await getProviderMeta({
-            providerValue: provider.value,
-            link: bestPost.link,
-          });
+            const bestPost = scored[0].post;
 
-          if (!meta || !meta.linkList || meta.linkList.length === 0) return null;
+            // 3. Fetch meta for best post
+            const meta = await getProviderMeta({
+              providerValue: provider.value,
+              link: bestPost.link,
+            });
 
-          // Reject mismatch between Movie and TV series:
-          if (type === 'tv' && meta.type === 'movie') {
-            console.log(`[Provider] ${provider.name} rejected: requested TV series, but got standalone movie "${meta.title}"`);
-            return null;
-          }
-          if (type === 'movie' && meta.type === 'series') {
-            console.log(`[Provider] ${provider.name} rejected: requested movie, but got series "${meta.title}"`);
-            return null;
-          }
+            if (!meta || !meta.linkList || meta.linkList.length === 0) return null;
 
-          // 4. Find relevant direct link
-          let targetLink: string | undefined;
-
-          if (type === 'movie' || season === undefined) {
-            // Movies
-            targetLink = meta.linkList[0]?.directLinks?.[0]?.link || meta.linkList[0]?.episodesLink;
-          } else {
-            // TV Series: match season and episode strictly
-            let seasonEntry = meta.linkList.find(link => {
-              const sNum = seasonNumberFromTitle(link.title);
-              return sNum !== undefined ? sNum === season : false;
-            }) || meta.linkList.find(
-              link => link.title?.toLowerCase().includes(`season ${season}`) ||
-                      link.title?.toLowerCase().includes(`s0${season}`) ||
-                      link.title?.toLowerCase().includes(`s${season}`)
-            );
-
-            // In Anime providers or single-entry series: season 1 or flat episode lists correspond to the main entry
-            if (!seasonEntry && (season === 1 || provider.type === 'anime' || meta.linkList.length === 1)) {
-              seasonEntry = meta.linkList[0];
+            // Reject mismatch between Movie and TV series:
+            if (type === 'tv' && meta.type === 'movie') {
+              console.log(`[Provider] ${provider.name} rejected: requested TV series, but got standalone movie "${meta.title}"`);
+              return null;
             }
-
-            // If requested season is not available on this provider, do not pretend another season is it!
-            if (!seasonEntry) {
-              console.log(`[Provider] ${provider.name} rejected: Season ${season} not found in "${meta.title}"`);
+            if (type === 'movie' && meta.type === 'series') {
+              console.log(`[Provider] ${provider.name} rejected: requested movie, but got series "${meta.title}"`);
               return null;
             }
 
-            if (seasonEntry?.directLinks?.length) {
-              const epMatch = seasonEntry.directLinks.find(d => {
-                const epNum = episodeNumberFromTitle(d.title);
-                return epNum !== undefined ? epNum === episode : false;
-              }) || seasonEntry.directLinks.find(
-                d => d.title?.toLowerCase().includes(`episode ${episode}`) ||
-                     d.title?.toLowerCase().includes(`ep ${episode}`) ||
-                     d.title?.toLowerCase().includes(`e${episode}`)
+            // 4. Find relevant direct link
+            let targetLink: string | undefined;
+
+            if (type === 'movie' || season === undefined) {
+              // Movies
+              targetLink = meta.linkList[0]?.directLinks?.[0]?.link || meta.linkList[0]?.episodesLink;
+            } else {
+              // TV Series: match season and episode strictly
+              let seasonEntry = meta.linkList.find(link => {
+                const sNum = seasonNumberFromTitle(link.title);
+                return sNum !== undefined ? sNum === season : false;
+              }) || meta.linkList.find(
+                link => link.title?.toLowerCase().includes(`season ${season}`) ||
+                        link.title?.toLowerCase().includes(`s0${season}`) ||
+                        link.title?.toLowerCase().includes(`s${season}`)
               );
-              if (!epMatch) {
-                console.log(`[Provider] ${provider.name} rejected: Episode ${episode} not found in Season ${season}`);
+
+              // In Anime providers or single-entry series: season 1 or flat episode lists correspond to the main entry
+              if (!seasonEntry && (season === 1 || provider.type === 'anime' || meta.linkList.length === 1)) {
+                seasonEntry = meta.linkList[0];
+              }
+
+              // If requested season is not available on this provider, do not pretend another season is it!
+              if (!seasonEntry) {
+                console.log(`[Provider] ${provider.name} rejected: Season ${season} not found in "${meta.title}"`);
                 return null;
               }
-              targetLink = epMatch.link;
-            } else if (seasonEntry?.episodesLink) {
-              const episodes = await getProviderEpisodes({
-                providerValue: provider.value,
-                url: seasonEntry.episodesLink,
-              });
-              const epMatch = episodes.find(e => {
-                const epNum = episodeNumberFromTitle(e.title);
-                return epNum !== undefined ? epNum === episode : false;
-              }) || episodes.find(
-                e => e.title?.toLowerCase().includes(`episode ${episode}`) ||
-                     e.title?.toLowerCase().includes(`ep ${episode}`) ||
-                     e.title?.toLowerCase().includes(`e${episode}`)
-              );
-              if (!epMatch) {
-                console.log(`[Provider] ${provider.name} rejected: Episode ${episode} not found via episodesLink`);
-                return null;
+
+              if (seasonEntry?.directLinks?.length) {
+                const epMatch = seasonEntry.directLinks.find(d => {
+                  const epNum = episodeNumberFromTitle(d.title);
+                  return epNum !== undefined ? epNum === episode : false;
+                }) || seasonEntry.directLinks.find(
+                  d => d.title?.toLowerCase().includes(`episode ${episode}`) ||
+                       d.title?.toLowerCase().includes(`ep ${episode}`) ||
+                       d.title?.toLowerCase().includes(`e${episode}`)
+                );
+                if (!epMatch) {
+                  console.log(`[Provider] ${provider.name} rejected: Episode ${episode} not found in Season ${season}`);
+                  return null;
+                }
+                targetLink = epMatch.link;
+              } else if (seasonEntry?.episodesLink) {
+                const episodes = await getProviderEpisodes({
+                  providerValue: provider.value,
+                  url: seasonEntry.episodesLink,
+                });
+                const epMatch = episodes.find(e => {
+                  const epNum = episodeNumberFromTitle(e.title);
+                  return epNum !== undefined ? epNum === episode : false;
+                }) || episodes.find(
+                  e => e.title?.toLowerCase().includes(`episode ${episode}`) ||
+                       e.title?.toLowerCase().includes(`ep ${episode}`) ||
+                       e.title?.toLowerCase().includes(`e${episode}`)
+                );
+                if (!epMatch) {
+                  console.log(`[Provider] ${provider.name} rejected: Episode ${episode} not found via episodesLink`);
+                  return null;
+                }
+                targetLink = epMatch.link;
               }
-              targetLink = epMatch.link;
             }
-          }
 
-          if (!targetLink) return null;
+            if (!targetLink) return null;
 
-          // 5. Resolve streams
-          const streams = await getProviderStream({
-            providerValue: provider.value,
-            link: targetLink,
-            type,
-          });
+            // 5. Resolve streams
+            const streams = await getProviderStream({
+              providerValue: provider.value,
+              link: targetLink,
+              type,
+            });
 
-          if (!streams || streams.length === 0) {
-            console.log(`[Provider] ${provider.name} finished in ${Date.now() - t0}ms (no streams)`);
+            if (!streams || streams.length === 0) {
+              console.log(`[Provider] ${provider.name} finished in ${Date.now() - t0}ms (no streams)`);
+              return null;
+            }
+
+            console.log(`[Provider] ${provider.name} SUCCESS in ${Date.now() - t0}ms (${streams.length} streams)`);
+            return {
+              providerValue: provider.value,
+              providerName: provider.name,
+              streams,
+              infoTitle: meta.title,
+            };
+          } catch (e) {
+            console.warn(`[Provider] ${provider.name} FAILED in ${Date.now() - t0}ms:`, e);
             return null;
           }
+        })(),
+        PROVIDER_TIMEOUT_MS,
+        null,
+        provider.name
+      );
 
-          console.log(`[Provider] ${provider.name} SUCCESS in ${Date.now() - t0}ms (${streams.length} streams)`);
-          return {
-            providerValue: provider.value,
-            providerName: provider.name,
-            streams,
-            infoTitle: meta.title,
-          };
-        } catch (e) {
-          console.warn(`[Provider] ${provider.name} FAILED in ${Date.now() - t0}ms:`, e);
-          return null;
-        }
-      })(),
-      PROVIDER_TIMEOUT_MS,
-      null,
-      provider.name
-    );
-  });
-
-  const results = await Promise.all(searchPromises);
-  const valid: ResolvedProviderResult[] = [];
-  for (const res of results) {
-    if (res && res.streams.length > 0) {
-      valid.push(res);
+      if (providerRes && providerRes.streams.length > 0) {
+        valid.push(providerRes);
+        // Early break on first matching provider! Avoids wasting worker resources.
+        break;
+      }
+    } catch (loopErr) {
+      console.warn(`[Provider] Error processing ${provider.name}:`, loopErr);
     }
   }
+
   return valid;
 }

@@ -19,25 +19,59 @@ export async function GET(request: NextRequest) {
   const season = searchParams.get('season') ? Number(searchParams.get('season')) : undefined;
   const episode = searchParams.get('episode') ? Number(searchParams.get('episode')) : undefined;
 
-  // If tmdbId is provided, resolve title and year from TMDB if not supplied
-  if (tmdbId && (!title || !year)) {
+  const isPlaceholder =
+    !title ||
+    title.trim().toLowerCase() === 'movie' ||
+    title.trim().toLowerCase() === 'tv series';
+
+  // If tmdbId is provided, resolve title and year from TMDB if not supplied or if placeholder was passed
+  if (tmdbId && (isPlaceholder || !year)) {
+    let resolvedTitle = '';
+    let resolvedYear = '';
+
+    // 1. Try official TMDB library first
     try {
       if (type === 'movie') {
         const details = await tmdb.movies.details(Number(tmdbId));
         if (details) {
-          title = details.title || details.original_title || title;
-          year = details.release_date ? details.release_date.split('-')[0] : year;
+          resolvedTitle = details.title || details.original_title || '';
+          resolvedYear = details.release_date ? details.release_date.split('-')[0] : '';
         }
       } else {
         const details = await tmdb.tvShows.details(Number(tmdbId));
         if (details) {
-          title = details.name || details.original_name || title;
-          year = details.first_air_date ? details.first_air_date.split('-')[0] : year;
+          resolvedTitle = details.name || details.original_name || '';
+          resolvedYear = details.first_air_date ? details.first_air_date.split('-')[0] : '';
         }
       }
     } catch (e) {
-      console.warn('[Resolve API] TMDB details fetch failed:', e);
+      console.warn('[Resolve API] TMDB library fetch failed, trying mirror:', e);
     }
+
+    // 2. Fallback to resilient TMDB mirror if library failed or ISP blocked
+    if (!resolvedTitle) {
+      try {
+        const endpoint = `https://db.wecollege.net/3/${type === 'tv' ? 'tv' : 'movie'}/${tmdbId}`;
+        const res = await fetch(endpoint, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            Origin: 'https://www.movy.sx',
+            Referer: 'https://www.movy.sx/',
+          },
+        });
+        if (res.ok) {
+          const d: any = await res.json();
+          resolvedTitle = d.title || d.name || d.original_title || d.original_name || '';
+          const dDate = d.release_date || d.first_air_date || '';
+          resolvedYear = dDate ? dDate.split('-')[0] : '';
+        }
+      } catch (mirrorErr) {
+        console.warn('[Resolve API] TMDB mirror fallback failed:', mirrorErr);
+      }
+    }
+
+    if (resolvedTitle) title = resolvedTitle;
+    if (resolvedYear) year = resolvedYear;
   }
 
   if (!title) {
@@ -89,13 +123,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(responsePayload, {
       headers: {
         'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': '*',
       },
     });
   } catch (error: any) {
     console.error('[Resolve API] Internal error:', error);
     return NextResponse.json(
       { success: false, message: error?.message || 'Resolution failed' },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+        },
+      }
     );
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+    },
+  });
 }

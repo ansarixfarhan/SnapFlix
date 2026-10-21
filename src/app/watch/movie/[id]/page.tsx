@@ -43,10 +43,11 @@ const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
     staleTime: 1000 * 60 * 60,
   });
 
-  const movieTitle = movieDetails?.title || movieDetails?.original_title || "Movie";
+  const movieTitle = movieDetails?.title || movieDetails?.original_title || "";
   const releaseYear = movieDetails?.release_date
     ? new Date(movieDetails.release_date).getFullYear()
-    : 2025;
+    : undefined;
+  const displayTitle = movieTitle || "Movie";
   const runtimeText = movieDetails?.runtime ? movieDurationString(movieDetails.runtime) : null;
   const recommendations = (movieDetails?.recommendations?.results || movieDetails?.similar?.results || []).slice(0, 10);
 
@@ -117,7 +118,7 @@ const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
     saveHistory: true,
   });
 
-  useDocumentTitle(`Watch ${movieTitle} | ${siteConfig.name}`);
+  useDocumentTitle(`Watch ${displayTitle} | ${siteConfig.name}`);
 
   const bookmarkData: SavedMovieDetails = {
     type: "movie",
@@ -126,7 +127,7 @@ const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
     id: Number(id),
     poster_path: movieDetails?.poster_path || "",
     release_date: movieDetails?.release_date || "",
-    title: movieTitle,
+    title: displayTitle,
     vote_average: movieDetails?.vote_average || 8.0,
     saved_date: new Date().toISOString(),
   };
@@ -159,7 +160,7 @@ const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
           {/* Title & Metadata Header */}
           <div className="space-y-1.5 border-b border-white/10 pb-3">
             <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-tight line-clamp-1">
-              {movieTitle}
+              {displayTitle}
             </h1>
 
             {/* Quick Metadata Row */}

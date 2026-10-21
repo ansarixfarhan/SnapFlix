@@ -39,6 +39,19 @@ export async function fetchProviderBaseUrls(): Promise<Record<string, { name: st
     }
   }
 
+  const DEFAULT_FALLBACK_URLS: Record<string, { name: string; url: string }> = {
+    castle: { name: 'Castle', url: 'https://api.hlowb.com' },
+    Moviesmod: { name: 'Moviesmod', url: 'https://moviesmod.uk.com' },
+    Topmovies: { name: 'Topmovies', url: 'https://moviesleech.club' },
+    UhdMovies: { name: 'UhdMovies', url: 'https://uhdmovies.us.org' },
+    Vega: { name: 'vegamovies', url: 'https://1vegamovies.pics' },
+    drive: { name: 'moviesDrive', url: 'https://new3.moviesdrive.beer/' },
+    '4khdhub': { name: '4khdhub', url: 'https://4khdhub.org' },
+    anikoto: { name: 'anikoto', url: 'https://anikoto.com' },
+    movieBoxWeb: { name: 'movieBoxWeb', url: 'https://www.moviebox.ph' },
+    autoEmbed: { name: 'autoEmbed', url: 'https://cinejoy.pk' },
+  };
+
   // 2. Fallback to GitHub raw
   try {
     const res = await fetch(URLS_ENDPOINT, { next: { revalidate: 3600 } });
@@ -48,8 +61,8 @@ export async function fetchProviderBaseUrls(): Promise<Record<string, { name: st
     return data;
   } catch (e) {
     if (urlCache.data) return urlCache.data;
-    console.error('Failed to fetch provider URLs:', e);
-    return {};
+    console.error('Failed to fetch provider URLs, using static fallback:', e);
+    return DEFAULT_FALLBACK_URLS;
   }
 }
 

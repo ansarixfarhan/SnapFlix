@@ -67,7 +67,8 @@ const WatchTvPage: NextPage<
     staleTime: 1000 * 60 * 60,
   });
 
-  const seriesName = tvDetails?.name || tvDetails?.original_name || "TV Series";
+  const seriesName = tvDetails?.name || tvDetails?.original_name || "";
+  const displaySeriesName = seriesName || "TV Series";
   const seasonsList = useMemo(() => {
     return (tvDetails?.seasons || []).filter((s) => s.season_number > 0);
   }, [tvDetails?.seasons]);
@@ -189,7 +190,7 @@ const WatchTvPage: NextPage<
     onEpisodeChange: handleEpisodeChange,
   });
 
-  useDocumentTitle(`Watch ${seriesName} S${currentSeason}E${currentEpisode} | ${siteConfig.name}`);
+  useDocumentTitle(`Watch ${displaySeriesName} S${currentSeason}E${currentEpisode} | ${siteConfig.name}`);
 
   const bookmarkData: SavedMovieDetails = {
     type: "tv",
@@ -198,14 +199,14 @@ const WatchTvPage: NextPage<
     id: Number(id),
     poster_path: tvDetails?.poster_path || "",
     release_date: tvDetails?.first_air_date || "",
-    title: seriesName,
+    title: displaySeriesName,
     vote_average: tvDetails?.vote_average || 8.0,
     saved_date: new Date().toISOString(),
   };
 
   const releaseYear = tvDetails?.first_air_date
     ? new Date(tvDetails.first_air_date).getFullYear()
-    : 2025;
+    : undefined;
 
   const hasNextEpisode = episodesList.some((e) => e.episode_number === currentEpisode + 1);
 

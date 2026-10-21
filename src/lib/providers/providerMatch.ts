@@ -13,41 +13,39 @@ export interface ProviderDefinition {
 }
 
 export const ACTIVE_PROVIDERS: ProviderDefinition[] = [
-  // Primary Fast Global Providers
+  // Primary Fast Verified Global & Indian Working Providers
   { value: 'autoEmbed', name: 'MultiStream', type: 'global' },
-  { value: 'castle', name: 'Castle TV', type: 'global' },
-  { value: 'movieBoxWeb', name: 'MovieBox Web', type: 'global' },
-  { value: '4khdhub', name: '4khdHub', type: 'global' },
-  { value: 'vega', name: 'VMovies', type: 'global' },
-  { value: 'drive', name: 'MoviesDrive', type: 'global' },
   { value: 'uhd', name: 'UHDMovies', type: 'global' },
+  { value: '4khdhub', name: '4khdHub', type: 'global' },
   { value: 'mod', name: 'MoviesMod', type: 'global' },
+  { value: 'showbox', name: 'ShowBox', type: 'english' },
+  { value: 'torrentio', name: 'Torrentio', type: 'global' },
   { value: 'katmovies', name: 'KatMoviesHd', type: 'global' },
+  { value: 'ridoMovies', name: 'RidoMovies', type: 'global' },
+  { value: 'castle', name: 'Castle TV', type: 'global' },
+  { value: 'drive', name: 'MoviesDrive', type: 'global' },
   { value: 'world4u', name: 'World4uFree', type: 'global' },
-  { value: 'hdhub4u', name: 'HdHub4u', type: 'global' },
-  { value: 'kmMovies', name: 'KmMovies', type: 'global' },
-  { value: 'topmovies', name: 'TopMovies', type: 'india' },
+  { value: 'movieBoxWeb', name: 'MovieBox Web', type: 'global' },
+  { value: 'multi', name: 'MultiMovies', type: 'global' },
   { value: '1cinevood', name: 'Cinewood', type: 'global' },
   { value: 'zeefliz', name: 'Zeefliz', type: 'global' },
-  { value: 'eonMovies', name: 'EonMovies', type: 'global' },
-  { value: 'movies4u', name: 'Movies4U', type: 'global' },
+  { value: 'kmMovies', name: 'KmMovies', type: 'global' },
+  { value: 'luxMovies', name: 'RogMovies', type: 'india' },
+  { value: 'protonMovies', name: 'ProtonMovies', type: 'global' },
   { value: 'everything', name: 'Everything', type: 'global' },
 
   // English & Drama
-  { value: 'showbox', name: 'ShowBox', type: 'english' },
   { value: 'kissKh', name: 'KissKh', type: 'english' },
   { value: 'dramacool', name: 'DramaCool', type: 'global' },
 
   // Regional & Indian
-  { value: 'luxMovies', name: 'RogMovies', type: 'india' },
-  { value: 'moviezwap', name: 'MoviezWap', type: 'india' },
   { value: 'movielinkdb', name: 'MovieLinkBD', type: 'india' },
   { value: 'mxplayer', name: 'MX Player', type: 'india' },
 
   // Anime
   { value: 'anikoto', name: 'Anikoto', type: 'anime' },
-  { value: 'kickAssAnime', name: 'KickAssAnime', type: 'anime' },
   { value: 'animesub', name: 'AnimeSub+', type: 'anime' },
+  { value: 'kickAssAnime', name: 'KickAssAnime', type: 'anime' },
   { value: 'animesalt', name: 'AnimeSalt', type: 'anime' },
   { value: 'animeworld', name: 'AnimeWorld', type: 'anime' },
   { value: 'kartoons', name: 'Kartoons', type: 'anime' },
@@ -253,16 +251,16 @@ export async function resolveStreamAcrossProviders({
     }
   }
 
-  // 2. Select targeted batch of up to 5 relevant providers to stay within Cloudflare CPU & subrequest limits
+  // 2. Select targeted batch of top verified providers for high resolution rate
   const targetProviders =
     type === 'anime'
-      ? ACTIVE_PROVIDERS.filter(p => p.type === 'anime').slice(0, 5)
+      ? ACTIVE_PROVIDERS.filter(p => p.type === 'anime').slice(0, 8)
       : type === 'tv'
       ? [
-          ...ACTIVE_PROVIDERS.filter(p => p.type !== 'anime' && p.value !== 'autoEmbed').slice(0, 4),
+          ...ACTIVE_PROVIDERS.filter(p => p.type !== 'anime' && p.value !== 'autoEmbed').slice(0, 8),
           ...ACTIVE_PROVIDERS.filter(p => p.value === 'anikoto'),
         ]
-      : ACTIVE_PROVIDERS.filter(p => p.type !== 'anime' && p.value !== 'autoEmbed').slice(0, 5);
+      : ACTIVE_PROVIDERS.filter(p => p.type !== 'anime' && p.value !== 'autoEmbed').slice(0, 8);
 
   // 3. Fallback Providers: Resolve in PARALLEL with Promise.allSettled for fast simultaneous resolution
   const providerPromises = targetProviders.map(async (provider) => {

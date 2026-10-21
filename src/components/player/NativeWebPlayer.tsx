@@ -1089,7 +1089,20 @@ export default function NativeWebPlayer({
         }
 
         const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
-        const res = await fetch(`${providerApiBase}/api/provider/resolve?${params.toString()}`);
+        const targetUrl = `${providerApiBase}/api/provider/resolve?${params.toString()}`;
+
+        let res: Response;
+        try {
+          res = await fetch(targetUrl);
+          if (!res.ok && res.status >= 500) {
+            await new Promise((r) => setTimeout(r, 1500));
+            res = await fetch(targetUrl);
+          }
+        } catch (initialErr) {
+          await new Promise((r) => setTimeout(r, 1500));
+          res = await fetch(targetUrl);
+        }
+
         const data = await res.json();
 
         if (!active) return;

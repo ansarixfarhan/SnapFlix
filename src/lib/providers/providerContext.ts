@@ -5,7 +5,7 @@ import * as cheerio from 'cheerio';
 import type { ProviderContext } from './types';
 
 const URLS_ENDPOINT =
-  'https://raw.githubusercontent.com/farhanansari888/SnapFlix-Providers/refs/heads/main/urls.json';
+  'https://raw.githubusercontent.com/ansarixfarhan/SnapFlix-Providers/refs/heads/main/urls.json';
 
 const LOCAL_URLS_PATHS = [
   path.resolve(process.cwd(), '../SnapFlix-Providers/urls.json'),

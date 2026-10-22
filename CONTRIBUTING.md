@@ -46,7 +46,7 @@ Ensure you have the following installed on your machine:
 ### Installation
 
 1. **Fork the Repository**:  
-   Click the **Fork** button at the top right of the [SnapFlix Repository](https://github.com/farhanansari888/SnapFlix) to create your own copy.
+   Click the **Fork** button at the top right of the [SnapFlix Repository](https://github.com/ansarixfarhan/SnapFlix) to create your own copy.
 
 2. **Clone your fork**:
    ```bash
@@ -94,7 +94,7 @@ graph LR
 
 1. **Keep your fork up-to-date**:
    ```bash
-   git remote add upstream https://github.com/farhanansari888/SnapFlix.git
+   git remote add upstream https://github.com/ansarixfarhan/SnapFlix.git
    git checkout main
    git pull upstream main
    ```
@@ -164,7 +164,7 @@ Before submitting your PR, make sure:
 ## 💬 Need Help?
 
 If you have questions, run into issues, or want to discuss a new idea before writing code:
-- Open an [Issue on GitHub](https://github.com/farhanansari888/SnapFlix/issues)
+- Open an [Issue on GitHub](https://github.com/ansarixfarhan/SnapFlix/issues)
 - Reach out to the maintainers
 
 Happy streaming & coding! 🍿🚀

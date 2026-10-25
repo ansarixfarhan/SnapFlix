@@ -1528,9 +1528,8 @@ export default function NativeWebPlayer({
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                // If direct failed and stream has custom headers, try proxy as fallback
-                const hasHeaders = selectedStream.headers && Object.keys(selectedStream.headers).length > 0;
-                if (hasHeaders && hls.url && !hls.url.includes('proxy-stream')) {
+                // If direct stream failed, attempt proxy fallback once
+                if (hls.url && !hls.url.includes('proxy-stream')) {
                   const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
                   const proxyUrl = `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
@@ -1541,8 +1540,14 @@ export default function NativeWebPlayer({
                   hls.startLoad();
                   return;
                 }
+
+                // If proxy or stream failed, auto-switch to next available server
+                console.warn('[Player] Network error on stream. Triggering auto-failover to alternative server...');
                 if (!handleAutoFailover()) {
-                  hls.startLoad();
+                  setPlaybackError(
+                    'This stream server is currently offline or returning Bad Gateway (502). Please select another server from the Servers menu below.'
+                  );
+                  hls.destroy();
                 }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
@@ -1550,7 +1555,7 @@ export default function NativeWebPlayer({
                 break;
               default:
                 if (!handleAutoFailover()) {
-                  setPlaybackError('Stream failed to load on this server. Please choose another server or player.');
+                  setPlaybackError('Stream failed to load on this server. Please choose another server from the menu below.');
                   hls.destroy();
                 }
                 break;

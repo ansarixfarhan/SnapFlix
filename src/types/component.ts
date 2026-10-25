@@ -6,7 +6,7 @@ export type ColorType = "warning" | "primary" | "secondary" | "success" | "dange
 export const colors = tv({
   variants: {
     color: {
-      warning: "bg-warning",
+      warning: "bg-primary",
       primary: "bg-primary",
       secondary: "bg-secondary",
       success: "bg-success",

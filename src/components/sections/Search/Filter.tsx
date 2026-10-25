@@ -175,7 +175,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({ isLoading, onSearchSubmit, 
                           type === "movie" ? (
                             <Movie className="text-primary" />
                           ) : (
-                            <TV className="text-warning" />
+                            <TV className="text-primary" />
                           )
                         }
                         endContent={

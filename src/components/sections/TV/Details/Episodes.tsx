@@ -181,7 +181,7 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
           title={episode.name}
           className={cn(
             "line-clamp-1 text-xl font-semibold transition-colors",
-            !isNotReleased && "group-hover:text-warning",
+            !isNotReleased && "group-hover:text-[#E50914]",
           )}
         >
           {episode.name}
@@ -241,7 +241,7 @@ const EpisodeGridCard: React.FC<EpisodeCardProps> = ({ episode, id }) => {
           )}
           <Chip
             size="sm"
-            color={isNotReleased ? "warning" : undefined}
+            color={isNotReleased ? "danger" : undefined}
             variant={isNotReleased ? "shadow" : undefined}
             className={cn("absolute top-2 right-2 z-20", {
               "bg-black/35 backdrop-blur-xs": !isNotReleased,
@@ -263,7 +263,7 @@ const EpisodeGridCard: React.FC<EpisodeCardProps> = ({ episode, id }) => {
             title={episode.name}
             className={cn(
               "text-lg font-semibold transition-colors",
-              !isNotReleased && "group-hover:text-warning",
+              !isNotReleased && "group-hover:text-[#E50914]",
             )}
           >
             {episode.name}

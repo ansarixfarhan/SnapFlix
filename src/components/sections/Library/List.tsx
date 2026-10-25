@@ -231,7 +231,7 @@ const LibraryList = () => {
             size="lg"
             variant="simple"
             className="absolute-center mt-[30vh]"
-            color={content === "movie" ? "primary" : "warning"}
+            color="primary"
           />
         ) : hasItems ? (
           <>
@@ -281,7 +281,7 @@ const LibraryList = () => {
                   size="lg"
                   variant="wave"
                   label={getLoadingLabel()}
-                  color={content === "movie" ? "primary" : "warning"}
+                  color="primary"
                 />
               )}
               {!hasNextPage && !isFetchingNextPage && sortedWatchlist.length > 0 && (

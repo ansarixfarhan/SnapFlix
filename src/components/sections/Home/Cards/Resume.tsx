@@ -46,9 +46,9 @@ const ResumeCard: React.FC<ResumeCardProps> = ({ media }) => {
               size="sm"
               variant="faded"
               radius="sm"
-              color="warning"
-              className="absolute right-2 top-2 z-20"
-              classNames={{ content: "font-bold" }}
+              color="danger"
+              className="absolute right-2 top-2 z-20 border-[#E50914]/40"
+              classNames={{ content: "font-bold text-[#E50914]" }}
             >
               S{media.season} E{media.episode}
             </Chip>
@@ -67,7 +67,10 @@ const ResumeCard: React.FC<ResumeCardProps> = ({ media }) => {
             radius="md"
             aria-label="Watch progress"
             className="absolute bottom-0 z-10 w-full"
-            color={media.type === "movie" ? "primary" : "warning"}
+            color="danger"
+            classNames={{
+              indicator: "bg-[#E50914] shadow-[0_0_10px_rgba(229,9,20,0.8)]",
+            }}
             value={(media.last_position / media.duration) * 100}
           />
           <div className="absolute bottom-0 z-2 h-1/2 w-full bg-linear-to-t from-black from-1%" />

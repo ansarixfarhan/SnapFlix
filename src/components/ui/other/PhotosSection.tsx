@@ -28,7 +28,7 @@ const PhotosSection: React.FC<PhotosSectionProps> = ({ images, type = "movie", h
       {heading === "row" ? (
         <RowHeader title="Photos" className="px-4 md:px-12" />
       ) : (
-        <SectionTitle color={type === "movie" ? "primary" : "warning"}>Photos</SectionTitle>
+        <SectionTitle color="primary">Photos</SectionTitle>
       )}
       <div
         className={

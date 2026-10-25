@@ -22,7 +22,7 @@ const TvShowHoverCard: React.FC<{ id: number; fullWidth?: boolean }> = ({ id, fu
           "w-full": fullWidth,
         })}
       >
-        <Spinner size="lg" color="warning" variant="simple" />
+        <Spinner size="lg" color="primary" variant="simple" />
       </div>
     );
   }

@@ -49,7 +49,7 @@ export default function Providers({ children }: PropsWithChildren) {
           <Suspense>
             <ProgressProvider
               options={{ showSpinner: false }}
-              color={`hsl(var(--heroui-${tv ? "warning" : "primary"}))`}
+              color="#E50914"
             >
               {children}
             </ProgressProvider>

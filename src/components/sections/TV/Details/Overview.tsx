@@ -62,10 +62,10 @@ export const TvShowOverviewSection: React.FC<TvShowOverviewSectionProps> = ({
         <div className="flex flex-col gap-8">
           <div id="title" className="flex flex-col gap-1 md:gap-2">
             <Chip
-              color="warning"
+              color="primary"
               variant="faded"
-              className="md:text-md text-xs"
-              classNames={{ content: "font-bold" }}
+              className="md:text-md text-xs border-[#E50914]/40"
+              classNames={{ content: "font-bold text-[#E50914]" }}
             >
               TV
             </Chip>
@@ -98,14 +98,15 @@ export const TvShowOverviewSection: React.FC<TvShowOverviewSectionProps> = ({
           <div id="action" className="flex w-full flex-wrap justify-between gap-4 md:gap-0">
             <div className="flex flex-wrap gap-2">
               <Button
-                color="warning"
+                color="primary"
                 variant="shadow"
                 onPress={onViewEpisodesClick}
                 startContent={<FaCirclePlay size={22} />}
+                className="bg-[#E50914] text-white font-bold shadow-lg shadow-red-600/30"
               >
                 View Episodes
               </Button>
-              <Trailer color="warning" videos={tv.videos.results} />
+              <Trailer color="primary" videos={tv.videos.results} />
             </div>
             <div className="flex flex-wrap gap-2">
               <ShareButton id={tv.id} title={title} type="tv" />
@@ -114,7 +115,7 @@ export const TvShowOverviewSection: React.FC<TvShowOverviewSectionProps> = ({
           </div>
 
           <div id="story" className="flex flex-col gap-2">
-            <SectionTitle color="warning">Story Line</SectionTitle>
+            <SectionTitle color="primary">Story Line</SectionTitle>
             <p className="text-sm">{tv.overview}</p>
           </div>
         </div>

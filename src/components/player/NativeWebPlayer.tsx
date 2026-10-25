@@ -773,17 +773,23 @@ export default function NativeWebPlayer({
 
     // A. Search within current provider first for a stream supporting targetLang
     if (selectedStream) {
-      const currentProv = providerResults.find((p) => p.providerName === selectedStream.providerName);
+      const currentProv = providerResults.find(
+        (p) =>
+          p.providerName === selectedStream.providerName ||
+          (selectedStream.providerValue && p.providerValue === selectedStream.providerValue)
+      );
       if (currentProv) {
         const matches = currentProv.streams.filter((s) => {
           if (!isPlayableStream(s)) return false;
           const langs = getStreamAudioLanguages(s, currentProv.infoTitle, originalLanguage);
           return langs.includes(targetLang);
         });
-        const diff = matches.find((s) => s.link !== selectedStream.link);
+        const currentQ = selectedStream.quality || '';
+        const sameQuality = currentQ ? matches.find((s) => s.link !== selectedStream.link && s.quality === currentQ) : null;
+        const diff = sameQuality || matches.find((s) => s.link !== selectedStream.link);
         if (diff) {
           candidateStream = { ...diff, providerName: currentProv.providerName };
-        } else if (matches.length > 0 && matches[0].link !== selectedStream.link) {
+        } else if (matches.length > 0) {
           candidateStream = { ...matches[0], providerName: currentProv.providerName };
         }
       }
@@ -799,7 +805,9 @@ export default function NativeWebPlayer({
         });
 
         if (matches.length > 0) {
-          const diff = matches.find((s) => s.link !== selectedStream?.link);
+          const currentQ = selectedStream?.quality || '';
+          const sameQuality = currentQ ? matches.find((s) => s.link !== selectedStream?.link && s.quality === currentQ) : null;
+          const diff = sameQuality || matches.find((s) => s.link !== selectedStream?.link);
           if (diff) {
             candidateStream = { ...diff, providerName: prov.providerName };
             break;
@@ -810,7 +818,7 @@ export default function NativeWebPlayer({
       }
     }
 
-    if (candidateStream && candidateStream.link !== selectedStream?.link) {
+    if (candidateStream) {
       resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
       setSelectedStream(candidateStream);
       setShowAudioDrawer(false);

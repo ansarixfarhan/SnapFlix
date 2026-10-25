@@ -186,9 +186,12 @@ export function getStreamAudioLanguages(
       langs.add(defaultLang);
       return Array.from(langs);
     }
-    const parsed = parseWordToLanguage(raw);
-    if (parsed) {
-      langs.add(parsed);
+    const splitParts = raw.split(/[,/+|]/);
+    for (const part of splitParts) {
+      const parsed = parseWordToLanguage(part.trim());
+      if (parsed) langs.add(parsed);
+    }
+    if (langs.size > 0 && !sLower.includes('dual') && !sLower.includes('multi')) {
       return Array.from(langs);
     }
   }

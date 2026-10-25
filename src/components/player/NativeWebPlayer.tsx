@@ -2019,7 +2019,7 @@ export default function NativeWebPlayer({
             onNextEpisode();
           }
         }}
-        className="w-full h-full object-contain"
+        className="w-full h-full object-contain pointer-events-none select-none"
       >
         {activeSubtitleUri && (
           <track

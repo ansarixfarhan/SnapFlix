@@ -114,6 +114,10 @@ const WatchTvPage: NextPage<
     return resolvedGroupSeasons?.find((s: any) => s.season_number === selectedSeason);
   }, [resolvedGroupSeasons, selectedSeason]);
 
+  const isRegularSeason = useMemo(() => {
+    return Boolean(tvDetails?.seasons?.some((s: any) => s.season_number === selectedSeason));
+  }, [tvDetails?.seasons, selectedSeason]);
+
   // Fetch season episodes for currently selected season (only if not preloaded from episode group)
   const { data: seasonData } = useQuery({
     queryKey: ["tv-season-episodes", id, selectedSeason],
@@ -125,7 +129,7 @@ const WatchTvPage: NextPage<
         return null;
       }
     },
-    enabled: !activeGroupSeason?.episodes,
+    enabled: Boolean(tvDetails) && !splitGroupId && !activeGroupSeason?.episodes && isRegularSeason,
     staleTime: 1000 * 60 * 60,
   });
 

@@ -18,11 +18,12 @@ const ResumeCard: React.FC<ResumeCardProps> = ({ media }) => {
   const posterImage = getImageUrl(media.backdrop_path || media.poster_path || "");
 
   const getRedirectLink = useCallback(() => {
+    const timeParam = media.last_position > 5 && !media.completed ? `?t=${Math.floor(media.last_position)}` : "";
     if (media.type === "movie") {
-      return `/watch/movie/${media.media_id}`;
+      return `/watch/movie/${media.media_id}${timeParam}`;
     }
     if (media.type === "tv") {
-      return `/watch/tv/${media.media_id}/${media.season}/${media.episode}`;
+      return `/watch/tv/${media.media_id}/${media.season || 1}/${media.episode || 1}${timeParam}`;
     }
     return "/";
   }, [media]);

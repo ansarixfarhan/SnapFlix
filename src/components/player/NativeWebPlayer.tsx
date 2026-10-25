@@ -25,7 +25,10 @@ import {
 } from 'react-icons/io5';
 import { MdHighQuality, MdReplay10, MdForward10 } from 'react-icons/md';
 import { Spinner, Button } from '@heroui/react';
-import { syncHistory } from '@/actions/histories';
+import { syncHistory, getMovieLastPosition, getTvShowLastPosition } from '@/actions/histories';
+import { GUEST_HISTORY_KEY, WATCH_HISTORY_QUERY_KEY, readGuestHistory, writeGuestHistory } from '@/hooks/useWatchHistory';
+import { queryClient } from '@/app/providers';
+import useSupabaseUser from '@/hooks/useSupabaseUser';
 import { tmdb } from '@/api/tmdb';
 import { cn } from '@/utils/helpers';
 
@@ -291,6 +294,8 @@ interface NativeWebPlayerProps {
   ratingAdvisory?: string;
   onBack?: () => void;
   backdropUrl?: string;
+  backdropPath?: string;
+  posterPath?: string;
   overview?: string;
 }
 
@@ -323,6 +328,8 @@ export default function NativeWebPlayer({
   ratingAdvisory,
   onBack,
   backdropUrl,
+  backdropPath,
+  posterPath,
   overview,
 }: NativeWebPlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -364,6 +371,68 @@ export default function NativeWebPlayer({
   const lastTouchXRef = useRef<number | null>(null);
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const doubleTapDismissTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Watch History & Auto-Resume States
+  const { data: user } = useSupabaseUser();
+  const [savedResumeTime, setSavedResumeTime] = useState<number>(0);
+  const hasAutoResumedRef = useRef<boolean>(false);
+  const lastSavedTimeRef = useRef<number>(0);
+  const lastSaveTimestampRef = useRef<number>(0);
+
+  // 0. Initial resume time discovery (from prop, URL ?t=, guest localStorage, or Supabase)
+  useEffect(() => {
+    hasAutoResumedRef.current = false;
+
+    // A. Check explicit initialTime prop
+    if (initialTime && initialTime > 0) {
+      setSavedResumeTime(initialTime);
+      return;
+    }
+
+    // B. Check URL query param (?t=123)
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const t = Number(urlParams.get('t'));
+      if (t > 0) {
+        setSavedResumeTime(t);
+        return;
+      }
+    }
+
+    // C. Check local guest history in localStorage
+    const guestHistory = readGuestHistory();
+    const mediaSeason = Number(season || (type === 'tv' ? 1 : 0));
+    const mediaEpisode = Number(episode || (type === 'tv' ? 1 : 0));
+
+    const match = guestHistory.find(
+      (h) =>
+        Number(h.media_id) === Number(tmdbId) &&
+        h.type === type &&
+        (type !== 'tv' || (Number(h.season || 1) === mediaSeason && Number(h.episode || 1) === mediaEpisode))
+    );
+
+    if (match && match.last_position > 5 && !match.completed) {
+      setSavedResumeTime(match.last_position);
+      return;
+    }
+
+    // D. If signed in, check server position
+    if (user) {
+      if (type === 'movie') {
+        getMovieLastPosition(Number(tmdbId))
+          .then((pos) => {
+            if (pos > 5) setSavedResumeTime(pos);
+          })
+          .catch(() => {});
+      } else {
+        getTvShowLastPosition(Number(tmdbId), mediaSeason, mediaEpisode)
+          .then((pos) => {
+            if (pos > 5) setSavedResumeTime(pos);
+          })
+          .catch(() => {});
+      }
+    }
+  }, [tmdbId, type, season, episode, initialTime, user]);
 
   const triggerDoubleTapFeedback = useCallback((side: 'left' | 'right') => {
     setDoubleTapSide(side);
@@ -1329,7 +1398,11 @@ export default function NativeWebPlayer({
     const isHls = isHlsStream(selectedStream);
     const isMkv = selectedStream.type === 'mkv' || selectedStream.link.includes('.mkv');
 
-    const seekTo = resumeTimeRef.current !== null ? resumeTimeRef.current : (initialTime || 0);
+    const effectiveSeekTime =
+      resumeTimeRef.current !== null
+        ? resumeTimeRef.current
+        : (initialTime > 0 ? initialTime : (savedResumeTime > 0 ? savedResumeTime : 0));
+    const seekTo = effectiveSeekTime;
     resumeTimeRef.current = null;
 
     if (isMkv) {
@@ -1503,26 +1576,135 @@ export default function NativeWebPlayer({
         hlsRef.current = null;
       }
     };
-  }, [selectedStream, getPlayableUrl, initialTime]);
+  }, [selectedStream, getPlayableUrl, initialTime, savedResumeTime]);
 
-  // 4. Supabase Watch History Periodic Sync
+  // Late auto-resume sync if savedResumeTime resolves after video element metadata load
   useEffect(() => {
-    if (!isPlaying || currentTime <= 5 || duration <= 0) return;
+    if (
+      savedResumeTime > 5 &&
+      videoRef.current &&
+      !hasAutoResumedRef.current &&
+      videoRef.current.currentTime < 3
+    ) {
+      hasAutoResumedRef.current = true;
+      videoRef.current.currentTime = savedResumeTime;
+    }
+  }, [savedResumeTime]);
 
-    const syncInterval = setInterval(() => {
-      syncHistory({
-        event: 'timeupdate',
-        mediaId: tmdbId,
-        mediaType: type,
-        currentTime: Math.floor(currentTime),
-        duration: Math.floor(duration),
-        season: type === 'tv' ? season : undefined,
-        episode: type === 'tv' ? episode : undefined,
-      }).catch(() => { });
-    }, 15000);
+  // 4. Robust Watch History Progress Saver (Guests + Supabase)
+  const saveWatchProgress = useCallback(
+    (forceCompleted: boolean = false) => {
+      const vid = videoRef.current;
+      if (!vid || !tmdbId) return;
 
-    return () => clearInterval(syncInterval);
-  }, [isPlaying, currentTime, duration, tmdbId, type, season, episode]);
+      const curTime = Math.floor(vid.currentTime || 0);
+      const dur = Math.floor(vid.duration || 0);
+
+      // Don't save if 0 or NaN
+      if (isNaN(curTime) || curTime <= 0) return;
+
+      const isCompleted = forceCompleted || (dur > 0 && curTime / dur >= 0.92);
+      const now = new Date().toISOString();
+      const mediaSeason = Number(season || (type === 'tv' ? 1 : 0));
+      const mediaEpisode = Number(episode || (type === 'tv' ? 1 : 0));
+
+      // 1. Save to LocalStorage (Instant for guests, offline, and Continue Watching carousel)
+      try {
+        const guestHistory = readGuestHistory();
+        const existingIdx = guestHistory.findIndex(
+          (item) =>
+            Number(item.media_id) === Number(tmdbId) &&
+            item.type === type &&
+            (type !== 'tv' || (Number(item.season || 1) === mediaSeason && Number(item.episode || 1) === mediaEpisode))
+        );
+
+        const cleanBackdrop = backdropPath || (backdropUrl && !backdropUrl.startsWith('http') ? backdropUrl : '');
+        const cleanPoster = posterPath || '';
+
+        if (existingIdx >= 0) {
+          const item = { ...guestHistory[existingIdx] };
+          item.last_position = curTime;
+          if (dur > 0) item.duration = dur;
+          item.completed = isCompleted;
+          item.updated_at = now;
+          if (!item.title && title) item.title = title;
+          if (!item.backdrop_path && cleanBackdrop) item.backdrop_path = cleanBackdrop;
+          if (!item.poster_path && cleanPoster) item.poster_path = cleanPoster;
+          const updated = [item, ...guestHistory.filter((_, i) => i !== existingIdx)].slice(0, 30);
+          writeGuestHistory(updated);
+        } else {
+          const newItem: any = {
+            id: Date.now(),
+            user_id: user?.id || 'guest',
+            media_id: Number(tmdbId),
+            type: type,
+            season: mediaSeason,
+            episode: mediaEpisode,
+            duration: dur || 7200,
+            last_position: curTime,
+            completed: isCompleted,
+            adult: false,
+            backdrop_path: cleanBackdrop,
+            poster_path: cleanPoster,
+            release_date: year ? `${year}-01-01` : now,
+            title: title || `Title ${tmdbId}`,
+            vote_average: 8.0,
+            updated_at: now,
+          };
+          const updated = [newItem, ...guestHistory].slice(0, 30);
+          writeGuestHistory(updated);
+        }
+
+        queryClient.invalidateQueries({ queryKey: WATCH_HISTORY_QUERY_KEY });
+      } catch (e) {
+        console.warn('[Player] Local history save error:', e);
+      }
+
+      // 2. Sync to Supabase if signed in
+      if (user) {
+        syncHistory(
+          {
+            event: isCompleted ? 'ended' : 'timeupdate',
+            currentTime: curTime,
+            duration: dur,
+            mediaId: Number(tmdbId),
+            mediaType: type,
+            season: mediaSeason,
+            episode: mediaEpisode,
+          },
+          isCompleted
+        ).catch((err) => {
+          console.warn('[Player] Supabase history sync error:', err);
+        });
+      }
+
+      lastSavedTimeRef.current = curTime;
+      lastSaveTimestampRef.current = Date.now();
+    },
+    [tmdbId, type, season, episode, title, year, backdropPath, backdropUrl, posterPath, user]
+  );
+
+  // Watch History Lifecycle Listeners (tab switch, window close, unmount)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        saveWatchProgress();
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      saveWatchProgress();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      saveWatchProgress();
+    };
+  }, [saveWatchProgress]);
 
   // 5. Controls Visibility Auto-hide & Screen Tap Toggle
   const triggerControls = useCallback(() => {
@@ -1723,12 +1905,26 @@ export default function NativeWebPlayer({
           setIsPlaying(true);
           setHasStartedPlayback(true);
         }}
-        onPause={() => setIsPlaying(false)}
+        onPause={() => {
+          setIsPlaying(false);
+          saveWatchProgress();
+        }}
         onTimeUpdate={() => {
           if (videoRef.current) {
-            setCurrentTime(videoRef.current.currentTime);
+            const cur = videoRef.current.currentTime;
+            setCurrentTime(cur);
             if (videoRef.current.buffered.length > 0) {
               setBuffered(videoRef.current.buffered.end(videoRef.current.buffered.length - 1));
+            }
+
+            // Throttled history save: every 5 seconds of playback or 5 wall-clock seconds
+            const nowSec = Math.floor(cur);
+            const wallTime = Date.now();
+            if (
+              nowSec > 3 &&
+              (Math.abs(nowSec - lastSavedTimeRef.current) >= 5 || wallTime - lastSaveTimestampRef.current >= 5000)
+            ) {
+              saveWatchProgress();
             }
           }
         }}
@@ -1738,6 +1934,7 @@ export default function NativeWebPlayer({
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => setIsBuffering(false)}
         onEnded={() => {
+          saveWatchProgress(true);
           if (autoPlayNext && hasNextEpisode && onNextEpisode) {
             onNextEpisode();
           }
@@ -1831,7 +2028,13 @@ export default function NativeWebPlayer({
               className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full bg-white hover:bg-gray-200 text-black font-extrabold text-xs sm:text-sm transition-all transform active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.7)] cursor-pointer"
             >
               <IoPlay size={15} className="fill-black ml-0.5" />
-              <span>Resume</span>
+              <span>
+                {currentTime > 5
+                  ? `Resume (${formatTime(currentTime)})`
+                  : savedResumeTime > 5
+                  ? `Resume (${formatTime(savedResumeTime)})`
+                  : 'Play'}
+              </span>
             </button>
 
             {/* Next Episode Button */}

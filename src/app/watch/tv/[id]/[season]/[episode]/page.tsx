@@ -347,6 +347,8 @@ const WatchTvPage: NextPage<
             originalLanguage={(tvDetails as any)?.original_language}
             onBack={handleBack}
             backdropUrl={getImageUrl(currentEpisodeData?.still_path || tvDetails?.backdrop_path, "backdrop")}
+            backdropPath={currentEpisodeData?.still_path || tvDetails?.backdrop_path || undefined}
+            posterPath={tvDetails?.poster_path || undefined}
             overview={currentEpisodeData?.overview || tvDetails?.overview}
           />
         )}

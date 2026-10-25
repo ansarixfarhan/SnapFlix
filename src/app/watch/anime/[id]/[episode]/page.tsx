@@ -277,6 +277,8 @@ const WatchAnimePage: NextPage<Params<{ id: string; episode: string }>> = ({ par
             originalLanguage={(animeDetails as any)?.original_language}
             onBack={handleBack}
             backdropUrl={getImageUrl(currentEpisodeData?.still_path || animeDetails?.backdrop_path, "backdrop")}
+            backdropPath={currentEpisodeData?.still_path || animeDetails?.backdrop_path || undefined}
+            posterPath={animeDetails?.poster_path || undefined}
             overview={currentEpisodeData?.overview || animeDetails?.overview}
           />
         )}

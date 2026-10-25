@@ -190,6 +190,8 @@ const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
             originalLanguage={movieDetails?.original_language}
             onBack={handleBack}
             backdropUrl={getImageUrl(movieDetails?.backdrop_path, "backdrop")}
+            backdropPath={movieDetails?.backdrop_path || undefined}
+            posterPath={movieDetails?.poster_path || undefined}
             overview={movieDetails?.overview}
           />
         )}

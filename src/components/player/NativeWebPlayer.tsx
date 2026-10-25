@@ -375,6 +375,7 @@ export default function NativeWebPlayer({
   // Watch History & Auto-Resume States
   const { data: user } = useSupabaseUser();
   const [savedResumeTime, setSavedResumeTime] = useState<number>(0);
+  const savedResumeTimeRef = useRef<number>(0);
   const hasAutoResumedRef = useRef<boolean>(false);
   const lastSavedTimeRef = useRef<number>(0);
   const lastSaveTimestampRef = useRef<number>(0);
@@ -383,9 +384,14 @@ export default function NativeWebPlayer({
   useEffect(() => {
     hasAutoResumedRef.current = false;
 
+    const applyResumeTime = (time: number) => {
+      setSavedResumeTime(time);
+      savedResumeTimeRef.current = time;
+    };
+
     // A. Check explicit initialTime prop
     if (initialTime && initialTime > 0) {
-      setSavedResumeTime(initialTime);
+      applyResumeTime(initialTime);
       return;
     }
 
@@ -394,7 +400,7 @@ export default function NativeWebPlayer({
       const urlParams = new URLSearchParams(window.location.search);
       const t = Number(urlParams.get('t'));
       if (t > 0) {
-        setSavedResumeTime(t);
+        applyResumeTime(t);
         return;
       }
     }
@@ -412,7 +418,7 @@ export default function NativeWebPlayer({
     );
 
     if (match && match.last_position > 5 && !match.completed) {
-      setSavedResumeTime(match.last_position);
+      applyResumeTime(match.last_position);
       return;
     }
 
@@ -421,13 +427,13 @@ export default function NativeWebPlayer({
       if (type === 'movie') {
         getMovieLastPosition(Number(tmdbId))
           .then((pos) => {
-            if (pos > 5) setSavedResumeTime(pos);
+            if (pos > 5) applyResumeTime(pos);
           })
           .catch(() => {});
       } else {
         getTvShowLastPosition(Number(tmdbId), mediaSeason, mediaEpisode)
           .then((pos) => {
-            if (pos > 5) setSavedResumeTime(pos);
+            if (pos > 5) applyResumeTime(pos);
           })
           .catch(() => {});
       }
@@ -1401,7 +1407,7 @@ export default function NativeWebPlayer({
     const effectiveSeekTime =
       resumeTimeRef.current !== null
         ? resumeTimeRef.current
-        : (initialTime > 0 ? initialTime : (savedResumeTime > 0 ? savedResumeTime : 0));
+        : (initialTime > 0 ? initialTime : (savedResumeTimeRef.current > 0 ? savedResumeTimeRef.current : 0));
     const seekTo = effectiveSeekTime;
     resumeTimeRef.current = null;
 
@@ -1420,6 +1426,7 @@ export default function NativeWebPlayer({
           capLevelToPlayerSize: true,
           startLevel: -1,
           autoStartLoad: true,
+          startPosition: seekTo > 0 ? seekTo : -1,
           maxBufferLength: 15,
           maxMaxBufferLength: 30,
           maxBufferSize: 30 * 1000 * 1000,
@@ -1434,10 +1441,19 @@ export default function NativeWebPlayer({
         hls.attachMedia(videoRef.current);
 
         hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-          if (seekTo > 0 && videoRef.current) {
-            videoRef.current.currentTime = seekTo;
+          if (seekTo > 0 && videoRef.current && Math.abs(videoRef.current.currentTime - seekTo) > 2) {
+            try {
+              videoRef.current.currentTime = seekTo;
+            } catch (e) {
+              console.warn('[Player] Initial seek error:', e);
+            }
           }
-          videoRef.current?.play().catch(() => { });
+          videoRef.current?.play().catch((playErr) => {
+            console.log('[Player] Autoplay prevented by browser, waiting for user tap:', playErr);
+            setIsBuffering(false);
+            setIsPlaying(false);
+            setShowControls(true);
+          });
 
           if (data?.levels && data.levels.length > 0) {
             setHlsLevels(data.levels);
@@ -1543,13 +1559,36 @@ export default function NativeWebPlayer({
         });
       } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
         videoRef.current.src = streamUrl;
-        if (seekTo > 0) videoRef.current.currentTime = seekTo;
-        videoRef.current.play().catch(() => { });
+        if (seekTo > 0) {
+          const handleLoadedMetadata = () => {
+            if (videoRef.current) {
+              try {
+                videoRef.current.currentTime = seekTo;
+              } catch (e) {}
+            }
+          };
+          videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+        }
+        videoRef.current.play().catch((playErr) => {
+          console.log('[Player] iOS autoplay blocked, waiting for user tap:', playErr);
+          setIsBuffering(false);
+          setIsPlaying(false);
+          setShowControls(true);
+        });
       }
     } else {
       const videoEl = videoRef.current;
       videoEl.src = streamUrl;
-      if (seekTo > 0) videoEl.currentTime = seekTo;
+      if (seekTo > 0) {
+        const handleLoadedMetadata = () => {
+          if (videoRef.current) {
+            try {
+              videoRef.current.currentTime = seekTo;
+            } catch (e) {}
+          }
+        };
+        videoEl.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+      }
 
       const handleNativeError = () => {
         console.warn('[Player] Native MP4 video error, triggering auto-failover');
@@ -1559,7 +1598,12 @@ export default function NativeWebPlayer({
       };
 
       videoEl.addEventListener('error', handleNativeError, { once: true });
-      videoEl.play().catch(() => { });
+      videoEl.play().catch((playErr) => {
+        console.log('[Player] Native MP4 autoplay blocked, waiting for user tap:', playErr);
+        setIsBuffering(false);
+        setIsPlaying(false);
+        setShowControls(true);
+      });
 
       return () => {
         videoEl.removeEventListener('error', handleNativeError);
@@ -1576,10 +1620,11 @@ export default function NativeWebPlayer({
         hlsRef.current = null;
       }
     };
-  }, [selectedStream, getPlayableUrl, initialTime, savedResumeTime]);
+  }, [selectedStream, getPlayableUrl, initialTime]);
 
   // Late auto-resume sync if savedResumeTime resolves after video element metadata load
   useEffect(() => {
+    savedResumeTimeRef.current = savedResumeTime;
     if (
       savedResumeTime > 5 &&
       videoRef.current &&
@@ -1587,7 +1632,19 @@ export default function NativeWebPlayer({
       videoRef.current.currentTime < 3
     ) {
       hasAutoResumedRef.current = true;
-      videoRef.current.currentTime = savedResumeTime;
+      const vid = videoRef.current;
+      if (vid.readyState >= 1) {
+        try {
+          vid.currentTime = savedResumeTime;
+        } catch (e) {}
+      } else {
+        const onLoaded = () => {
+          try {
+            vid.currentTime = savedResumeTime;
+          } catch (e) {}
+        };
+        vid.addEventListener('loadedmetadata', onLoaded, { once: true });
+      }
     }
   }, [savedResumeTime]);
 
@@ -1792,6 +1849,7 @@ export default function NativeWebPlayer({
   // Toggle Play / Pause with interruption protection
   const togglePlay = () => {
     if (!videoRef.current) return;
+    setIsBuffering(false);
     if (videoRef.current.paused) {
       const playPromise = videoRef.current.play();
       if (playPromise !== undefined) {
@@ -1904,10 +1962,34 @@ export default function NativeWebPlayer({
         onPlay={() => {
           setIsPlaying(true);
           setHasStartedPlayback(true);
+          setIsBuffering(false);
+        }}
+        onPlaying={() => {
+          setIsBuffering(false);
+          setIsPlaying(true);
+          setHasStartedPlayback(true);
         }}
         onPause={() => {
+          setIsBuffering(false);
           setIsPlaying(false);
           saveWatchProgress();
+        }}
+        onWaiting={() => {
+          if (!videoRef.current?.paused) {
+            setIsBuffering(true);
+          }
+        }}
+        onCanPlay={() => {
+          setIsBuffering(false);
+        }}
+        onSeeked={() => {
+          setIsBuffering(false);
+        }}
+        onLoadedData={() => {
+          setIsBuffering(false);
+        }}
+        onError={() => {
+          setIsBuffering(false);
         }}
         onTimeUpdate={() => {
           if (videoRef.current) {
@@ -1931,8 +2013,6 @@ export default function NativeWebPlayer({
         onDurationChange={() => {
           if (videoRef.current) setDuration(videoRef.current.duration);
         }}
-        onWaiting={() => setIsBuffering(true)}
-        onPlaying={() => setIsBuffering(false)}
         onEnded={() => {
           saveWatchProgress(true);
           if (autoPlayNext && hasNextEpisode && onNextEpisode) {
@@ -2179,7 +2259,7 @@ export default function NativeWebPlayer({
       )}
 
       {/* 5. Center Buffering Indicator */}
-      {isBuffering && !loadingStreams && !playbackError && (
+      {isBuffering && isPlaying && !loadingStreams && !playbackError && (
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-20">
           <Spinner size="lg" color="danger" />
         </div>
@@ -2189,10 +2269,10 @@ export default function NativeWebPlayer({
       {!loadingStreams && !playbackError && !showPauseHero && (
         <div
           className={`absolute inset-0 pointer-events-none flex items-center justify-center z-20 transition-opacity duration-300 ${
-            showControls && !isBuffering ? 'opacity-100' : 'opacity-0'
+            showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
           }`}
         >
-          <div className={`flex items-center gap-6 sm:gap-10 ${showControls && !isBuffering ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+          <div className={`flex items-center gap-6 sm:gap-10 ${showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'}`}>
             {/* Rewind 10s */}
             <button
               type="button"

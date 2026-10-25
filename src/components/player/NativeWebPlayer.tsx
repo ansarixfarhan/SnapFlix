@@ -1865,17 +1865,58 @@ export default function NativeWebPlayer({
     }
   };
 
-  // Toggle Fullscreen
+  // Toggle Fullscreen with cross-browser support
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(() => { });
+    const doc = document as any;
+    const isFs = Boolean(
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement
+    );
+    if (!isFs) {
+      const el = containerRef.current as any;
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(() => { });
+      } else if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+      } else if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
+        (videoRef.current as any).webkitEnterFullscreen();
+      }
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen().catch(() => { });
+      if (doc.exitFullscreen) {
+        doc.exitFullscreen().catch(() => { });
+      } else if (doc.webkitExitFullscreen) {
+        doc.webkitExitFullscreen();
+      }
       setIsFullscreen(false);
+      setShowEpisodesTray(false);
     }
   };
+
+  // Sync fullscreen state from browser/OS events (Escape key, mobile rotation, back gesture)
+  useEffect(() => {
+    const handleFsChange = () => {
+      const fsActive = Boolean(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(fsActive);
+      if (!fsActive) {
+        setShowEpisodesTray(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+    };
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -1921,6 +1962,13 @@ export default function NativeWebPlayer({
   const activeOverview = overview || currentEp?.overview || fetchedOverview;
 
   useEffect(() => {
+    // Only show Pause Hero in Fullscreen or Desktop (>= 768px). Never in mobile portrait!
+    const isMobilePortrait = typeof window !== 'undefined' && !isFullscreen && window.innerWidth < 768;
+    if (isMobilePortrait) {
+      setShowPauseHero(false);
+      return;
+    }
+
     if (!isPlaying && hasStartedPlayback && !loadingStreams && !error && !playbackError && Boolean(activeBackdropUrl)) {
       if (pauseHeroTimerRef.current) clearTimeout(pauseHeroTimerRef.current);
       pauseHeroTimerRef.current = setTimeout(() => {
@@ -1937,7 +1985,7 @@ export default function NativeWebPlayer({
     return () => {
       if (pauseHeroTimerRef.current) clearTimeout(pauseHeroTimerRef.current);
     };
-  }, [isPlaying, hasStartedPlayback, loadingStreams, error, playbackError, activeBackdropUrl]);
+  }, [isPlaying, hasStartedPlayback, loadingStreams, error, playbackError, activeBackdropUrl, isFullscreen]);
 
   return (
     <div
@@ -2037,10 +2085,12 @@ export default function NativeWebPlayer({
       <div
         onClick={(e) => {
           e.stopPropagation();
-          togglePlay();
+          // Never toggle play on background click! Dismiss pause hero and reveal player controls
+          setShowPauseHero(false);
+          triggerControls();
         }}
         className={cn(
-          "absolute inset-0 z-15 flex flex-col justify-center px-4 sm:px-10 md:px-14 py-4 sm:py-8 select-none cursor-pointer overflow-hidden transition-opacity duration-500 ease-out",
+          "absolute inset-0 z-15 flex flex-col justify-center px-4 sm:px-10 md:px-14 py-4 sm:py-8 select-none overflow-hidden transition-opacity duration-500 ease-out",
           showPauseHero ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         )}
       >
@@ -2132,8 +2182,8 @@ export default function NativeWebPlayer({
               </button>
             )}
 
-            {/* Episodes Tray Button */}
-            {(type === "tv" || (episodes && episodes.length > 0)) && (
+            {/* Episodes Tray Button - Only in Fullscreen mode! */}
+            {(type === "tv" || (episodes && episodes.length > 0)) && isFullscreen && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -2272,7 +2322,7 @@ export default function NativeWebPlayer({
             showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
           }`}
         >
-          <div className={`flex items-center gap-6 sm:gap-10 ${showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+          <div className={`flex items-center gap-4 sm:gap-10 ${showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'}`}>
             {/* Rewind 10s */}
             <button
               type="button"
@@ -2280,11 +2330,11 @@ export default function NativeWebPlayer({
                 e.stopPropagation();
                 skip(-10);
               }}
-              className="w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 text-white/90 hover:text-white flex items-center justify-center transition active:scale-90 cursor-pointer backdrop-blur-md border border-white/10 shadow-2xl"
+              className="w-9 h-9 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 text-white/90 hover:text-white flex items-center justify-center transition active:scale-90 cursor-pointer backdrop-blur-md border border-white/10 shadow-2xl"
               title="Rewind 10s"
               aria-label="Rewind 10 seconds"
             >
-              <MdReplay10 size={26} />
+              <MdReplay10 className="text-[20px] sm:text-[26px]" />
             </button>
 
             {/* Center Large Play / Pause */}
@@ -2294,14 +2344,14 @@ export default function NativeWebPlayer({
                 e.stopPropagation();
                 togglePlay();
               }}
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/65 hover:bg-black/85 text-white flex items-center justify-center transition active:scale-90 cursor-pointer backdrop-blur-md border border-white/15 shadow-[0_0_35px_rgba(0,0,0,0.85)]"
+              className="w-12 h-12 sm:w-20 sm:h-20 rounded-full bg-black/65 hover:bg-black/85 text-white flex items-center justify-center transition active:scale-90 cursor-pointer backdrop-blur-md border border-white/15 shadow-[0_0_35px_rgba(0,0,0,0.85)]"
               title={isPlaying ? "Pause" : "Play"}
               aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? (
-                <IoPause size={34} />
+                <IoPause className="text-[24px] sm:text-[34px]" />
               ) : (
-                <IoPlay size={36} className="ml-1" />
+                <IoPlay className="text-[26px] sm:text-[36px] ml-0.5 sm:ml-1" />
               )}
             </button>
 
@@ -2312,11 +2362,11 @@ export default function NativeWebPlayer({
                 e.stopPropagation();
                 skip(10);
               }}
-              className="w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 text-white/90 hover:text-white flex items-center justify-center transition active:scale-90 cursor-pointer backdrop-blur-md border border-white/10 shadow-2xl"
+              className="w-9 h-9 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 text-white/90 hover:text-white flex items-center justify-center transition active:scale-90 cursor-pointer backdrop-blur-md border border-white/10 shadow-2xl"
               title="Forward 10s"
               aria-label="Forward 10 seconds"
             >
-              <MdForward10 size={26} />
+              <MdForward10 className="text-[20px] sm:text-[26px]" />
             </button>
           </div>
         </div>
@@ -2719,8 +2769,8 @@ export default function NativeWebPlayer({
             <span className="text-white/60">{formatTime(duration)}</span>
           </div>
 
-          {/* Center: Episodes ^ button (TV & Anime) - Positioned dead-center of player bar */}
-          {(type === 'tv' || (episodes && episodes.length > 0)) && (
+          {/* Center: Episodes ^ button (TV & Anime) - Positioned dead-center of player bar - ONLY in Fullscreen */}
+          {(type === 'tv' || (episodes && episodes.length > 0)) && isFullscreen && (
             <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto">
               <button
                 type="button"
@@ -2757,8 +2807,8 @@ export default function NativeWebPlayer({
         </div>
       </div>
 
-      {/* 8. Episodes Selection Tray / Modal (Bingr Layout + Netflix Themed) */}
-      {showEpisodesTray && episodes && episodes.length > 0 && (() => {
+      {/* 8. Episodes Selection Tray / Modal (Bingr Layout + Netflix Themed) - ONLY in Fullscreen! */}
+      {isFullscreen && showEpisodesTray && episodes && episodes.length > 0 && (() => {
         const chunkSize = 25;
         const totalChunks = Math.ceil(episodes.length / chunkSize);
         const currentChunk = Math.min(selectedEpisodeChunk, Math.max(0, totalChunks - 1));

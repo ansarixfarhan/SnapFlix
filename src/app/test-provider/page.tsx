@@ -63,7 +63,7 @@ export default function TestProviderPage() {
     const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
 
     if (isHls || hasHeaders) {
-      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
       const headersJson = JSON.stringify(stream.headers || {});
       return `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
         stream.link
@@ -164,7 +164,7 @@ export default function TestProviderPage() {
         params.append('episode', episode);
       }
 
-      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
       const res = await fetch(`${providerApiBase}/api/provider/resolve?${params.toString()}`);
       const data = await res.json();
 

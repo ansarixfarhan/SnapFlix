@@ -19,6 +19,7 @@ import type { SavedMovieDetails } from "@/types/movie";
 import Link from "next/link";
 import NativeWebPlayer from "@/components/player/NativeWebPlayer";
 import { IoSparkles } from "react-icons/io5";
+import { FaClock } from "react-icons/fa6";
 
 const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
   const { id } = use(params);
@@ -48,6 +49,9 @@ const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
     ? new Date(movieDetails.release_date).getFullYear()
     : undefined;
   const displayTitle = movieTitle || "Movie";
+  const isNotReleased = Boolean(
+    movieDetails?.release_date && new Date(movieDetails.release_date).getTime() > Date.now()
+  );
   const runtimeText = movieDetails?.runtime ? movieDurationString(movieDetails.runtime) : null;
   const recommendations = (movieDetails?.recommendations?.results || movieDetails?.similar?.results || []).slice(0, 10);
 
@@ -143,15 +147,52 @@ const WatchMoviePage: NextPage<Params<{ id: string }>> = ({ params }) => {
             : "w-full aspect-video lg:aspect-auto lg:flex-1 lg:h-full z-30 shadow-2xl lg:border-r border-white/10"
         )}
       >
-        {/* Native Web Player */}
-        <NativeWebPlayer
-          tmdbId={Number(id)}
-          title={movieTitle}
-          year={releaseYear}
-          type="movie"
-          originalLanguage={movieDetails?.original_language}
-          onBack={handleBack}
-        />
+        {/* Native Web Player or Unreleased Screen */}
+        {isNotReleased ? (
+          <div className="flex flex-col items-center justify-center size-full bg-black/95 p-6 text-center text-white space-y-4">
+            <div className="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
+              <FaClock size={28} />
+            </div>
+            <div className="space-y-1.5 max-w-md">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                Coming Soon
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black text-white">
+                {movieTitle}
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-400">
+                This film has not been released yet. Scheduled release:{" "}
+                <span className="text-white font-semibold block mt-1">
+                  {new Date(movieDetails!.release_date).toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </span>
+              </p>
+            </div>
+            <Button
+              color="primary"
+              variant="flat"
+              className="font-bold text-xs mt-2"
+              onPress={handleBack}
+            >
+              Go Back
+            </Button>
+          </div>
+        ) : (
+          <NativeWebPlayer
+            tmdbId={Number(id)}
+            title={movieTitle}
+            year={releaseYear}
+            type="movie"
+            originalLanguage={movieDetails?.original_language}
+            onBack={handleBack}
+            backdropUrl={getImageUrl(movieDetails?.backdrop_path, "backdrop")}
+            overview={movieDetails?.overview}
+          />
+        )}
       </div>
 
       {/* 2. DETAILS & RECOMMENDATIONS (Scrollable in Portrait, Sidebar on Desktop, hidden in Landscape) */}

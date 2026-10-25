@@ -1,33 +1,83 @@
 "use client";
 
-import { forwardRef, memo, useMemo, useState } from "react";
+import { forwardRef, memo, useEffect, useMemo, useState } from "react";
 import { Season } from "tmdb-ts";
 import { useDebouncedValue } from "@mantine/hooks";
+import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import RowHeader from "@/components/ui/other/RowHeader";
 import { cn } from "@/utils/helpers";
+import { getTvEpisodeGroup } from "@/actions/catalog";
+import { getSeasonGroupIdToSplit, resolveGroupToSeasons, type ResolvedSeason } from "@/utils/seasonResolver";
 
 const TvShowEpisodesSelection = dynamic(() => import("./Episodes"));
 
 interface Props {
   id: number;
   seasons: Season[];
+  tvShow?: any;
 }
 
-const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(({ id, seasons }, ref) => {
-  const ordered = useMemo(
-    () => [...(seasons || [])].sort((a, b) => a.season_number - b.season_number),
-    [seasons],
-  );
+const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(({ id, seasons, tvShow }, ref) => {
+  // Check if this show has an episode group that splits continuous episodes into seasons
+  const splitGroupId = useMemo(() => getSeasonGroupIdToSplit(tvShow), [tvShow]);
+
+  const { data: groupResult } = useQuery({
+    queryKey: ["tv-episode-group", splitGroupId],
+    queryFn: () => (splitGroupId ? getTvEpisodeGroup(splitGroupId) : null),
+    enabled: Boolean(splitGroupId),
+    staleTime: 1000 * 60 * 60,
+  });
+
+  const groupData = groupResult && "data" in groupResult ? groupResult.data : null;
+  const resolvedGroupSeasons: ResolvedSeason[] | null = useMemo(() => {
+    if (!groupData) return null;
+    return resolveGroupToSeasons(groupData);
+  }, [groupData]);
+
+  const effectiveSeasons = useMemo(() => {
+    if (resolvedGroupSeasons && resolvedGroupSeasons.length > 0) {
+      return resolvedGroupSeasons;
+    }
+    return seasons || [];
+  }, [resolvedGroupSeasons, seasons]);
+
+  const ordered = useMemo(() => {
+    const now = new Date();
+    return [...effectiveSeasons]
+      .filter((season) => {
+        if (season.air_date) {
+          const air = new Date(season.air_date);
+          if (!isNaN(air.getTime()) && air.getTime() > now.getTime()) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .sort((a, b) => a.season_number - b.season_number);
+  }, [effectiveSeasons]);
+
   const [search, setSearch] = useState("");
   const [searchQuery] = useDebouncedValue(search, 300);
   const [layout, setLayout] = useState<"list" | "grid">("list");
   const [sortedByName, setSortedByName] = useState(false);
-  const [seasonNumber, setSeasonNumber] = useState(
-    () => ordered.find((season) => season.season_number > 0)?.season_number ?? ordered[0]?.season_number ?? 1,
-  );
+
+  const defaultSeasonNum = useMemo(() => {
+    return ordered.find((season) => season.season_number > 0)?.season_number ?? ordered[0]?.season_number ?? 1;
+  }, [ordered]);
+
+  const [seasonNumber, setSeasonNumber] = useState<number>(defaultSeasonNum);
+
+  // Keep seasonNumber synchronized if ordered seasons change (e.g. after episode group loads)
+  useEffect(() => {
+    if (ordered.length > 0 && !ordered.some((s) => s.season_number === seasonNumber)) {
+      setSeasonNumber(defaultSeasonNum);
+    }
+  }, [ordered, seasonNumber, defaultSeasonNum]);
 
   if (!ordered.length) return null;
+
+  const currentResolvedSeason = resolvedGroupSeasons?.find((s) => s.season_number === seasonNumber);
 
   return (
     <section ref={ref} id="seasons-episodes" className="flex flex-col gap-3 px-4 md:px-12">
@@ -85,6 +135,7 @@ const TvShowsSeasonsSelection = forwardRef<HTMLElement, Props>(({ id, seasons },
       <TvShowEpisodesSelection
         id={id}
         seasonNumber={seasonNumber}
+        preloadedEpisodes={currentResolvedSeason?.episodes}
         filters={{ searchQuery, sortedByName, layout }}
       />
     </section>

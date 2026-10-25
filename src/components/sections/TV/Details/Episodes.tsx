@@ -4,6 +4,7 @@ import useBreakpoints from "@/hooks/useBreakpoints";
 import { cn, formatDate, isEmpty } from "@/utils/helpers";
 import { PlayOutline } from "@/utils/icons";
 import { getImageUrl, getLoadingLabel, movieDurationString } from "@/utils/movies";
+import type { ResolvedEpisode } from "@/utils/seasonResolver";
 import { Card, CardBody, CardFooter, Chip, Image, Spinner } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -13,6 +14,7 @@ import { Episode } from "tmdb-ts/dist/types/tv-episode";
 interface TvShowEpisodesSelectionProps {
   id: number;
   seasonNumber: number;
+  preloadedEpisodes?: ResolvedEpisode[];
   filters?: {
     searchQuery?: string;
     sortedByName?: boolean;
@@ -22,7 +24,7 @@ interface TvShowEpisodesSelectionProps {
 
 interface EpisodeCardProps {
   id: number;
-  episode: Episode;
+  episode: Episode | ResolvedEpisode;
   order?: number;
   withAnimation?: boolean;
 }
@@ -30,8 +32,11 @@ interface EpisodeCardProps {
 const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
   id,
   seasonNumber,
+  preloadedEpisodes,
   filters: { searchQuery, sortedByName, layout } = {},
 }) => {
+  const hasPreloaded = Boolean(preloadedEpisodes && preloadedEpisodes.length > 0);
+
   const { data: result, isPending, isError } = useQuery({
     queryFn: async () => {
       const serverResult = await getTvSeason(id, seasonNumber);
@@ -45,10 +50,16 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
       return serverResult;
     },
     queryKey: ["tv-show-episodes", id, seasonNumber],
+    enabled: !hasPreloaded,
   });
-  const data = result && "data" in result ? result.data : null;
 
-  if (isPending) {
+  const rawEpisodes = hasPreloaded
+    ? preloadedEpisodes
+    : result && "data" in result
+      ? result.data?.episodes
+      : null;
+
+  if (isPending && !hasPreloaded) {
     return (
       <div className="flex h-full items-center justify-center">
         <Spinner variant="wave" size="lg" label={getLoadingLabel()} color="danger" />
@@ -56,15 +67,23 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
     );
   }
 
-  if (isError || (result && "error" in result) || !data?.episodes) {
+  if ((!hasPreloaded && (isError || (result && "error" in result))) || !rawEpisodes) {
     return <p className="py-6 text-sm text-white/60">Episodes could not be loaded from TMDB.</p>;
   }
 
-  const EPISODES: Episode[] = (data.episodes as Episode[])
-    .filter((episode: Episode) =>
-      searchQuery ? episode.name.toLowerCase().includes(searchQuery.toLowerCase()) : true,
-    )
-    .sort((a: Episode, b: Episode) => (sortedByName ? a.name.localeCompare(b.name) : 0));
+  const now = new Date();
+  const EPISODES = (rawEpisodes as (Episode | ResolvedEpisode)[])
+    .filter((episode) => {
+      // Exclude future unreleased episodes
+      if (episode.air_date) {
+        const air = new Date(episode.air_date);
+        if (!isNaN(air.getTime()) && air.getTime() > now.getTime()) {
+          return false;
+        }
+      }
+      return searchQuery ? episode.name.toLowerCase().includes(searchQuery.toLowerCase()) : true;
+    })
+    .sort((a, b) => (sortedByName ? a.name.localeCompare(b.name) : 0));
 
   if (isEmpty(EPISODES)) {
     return (
@@ -77,7 +96,7 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
   if (layout === "grid") {
     return (
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-        {EPISODES.map((episode: Episode) => (
+        {EPISODES.map((episode) => (
           <EpisodeGridCard key={episode.id} episode={episode} id={id} />
         ))}
       </div>
@@ -86,7 +105,7 @@ const TvShowEpisodesSelection: React.FC<TvShowEpisodesSelectionProps> = ({
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:gap-4">
-      {EPISODES.map((episode: Episode, index: number) => (
+      {EPISODES.map((episode, index: number) => (
         <EpisodeListCard key={episode.id} episode={episode} order={index + 1} id={id} />
       ))}
     </div>
@@ -167,9 +186,16 @@ export const EpisodeListCard: React.FC<EpisodeCardProps> = ({
         >
           {episode.name}
         </p>
-        <p className="text-content4-foreground line-clamp-1 text-xs">
-          {formatDate(episode.air_date, "en-US")}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-content4-foreground line-clamp-1 text-xs">
+            {formatDate(episode.air_date, "en-US")}
+          </p>
+          {(episode as any).absolute_episode_number && (episode as any).absolute_episode_number !== episode.episode_number && (
+            <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/70">
+              Overall Ep {(episode as any).absolute_episode_number}
+            </span>
+          )}
+        </div>
         <p className="text-foreground-500 line-clamp-2 text-sm" title={episode.overview}>
           {episode.overview}
         </p>
@@ -242,9 +268,16 @@ const EpisodeGridCard: React.FC<EpisodeCardProps> = ({ episode, id }) => {
           >
             {episode.name}
           </p>
-          <p className="text-content4-foreground line-clamp-1 text-xs">
-            {formatDate(episode.air_date, "en-US")}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-content4-foreground line-clamp-1 text-xs">
+              {formatDate(episode.air_date, "en-US")}
+            </p>
+            {(episode as any).absolute_episode_number && (episode as any).absolute_episode_number !== episode.episode_number && (
+              <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/70">
+                Overall Ep {(episode as any).absolute_episode_number}
+              </span>
+            )}
+          </div>
           <p className="text-foreground-500 text-sm" title={episode.overview}>
             {episode.overview}
           </p>

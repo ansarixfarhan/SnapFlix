@@ -19,6 +19,7 @@ interface SeriesFactsProps {
     networks?: { name?: string }[];
     production_companies?: { name?: string }[];
   };
+  overrideSeasonCount?: number;
 }
 
 const PersonLink: React.FC<{ id?: number; name?: string }> = ({ id, name }) => {
@@ -31,13 +32,14 @@ const PersonLink: React.FC<{ id?: number; name?: string }> = ({ id, name }) => {
   );
 };
 
-const SeriesFacts: React.FC<SeriesFactsProps> = ({ show }) => {
+const SeriesFacts: React.FC<SeriesFactsProps> = ({ show, overrideSeasonCount }) => {
   const creators = show.created_by?.filter((person) => Boolean(person.name)).slice(0, 3) || [];
+  const seasonCount = overrideSeasonCount || show.number_of_seasons;
   const seasons =
-    show.number_of_seasons && show.number_of_episodes
-      ? `${show.number_of_seasons} season${show.number_of_seasons > 1 ? "s" : ""} · ${show.number_of_episodes} episodes`
-      : show.number_of_seasons
-        ? `${show.number_of_seasons} season${show.number_of_seasons > 1 ? "s" : ""}`
+    seasonCount && show.number_of_episodes
+      ? `${seasonCount} season${seasonCount > 1 ? "s" : ""} · ${show.number_of_episodes} episodes`
+      : seasonCount
+        ? `${seasonCount} season${seasonCount > 1 ? "s" : ""}`
         : null;
 
   return (

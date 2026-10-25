@@ -14,6 +14,8 @@ import dynamic from "next/dynamic";
 import { NextPage } from "next";
 import Footer from "@/components/ui/layout/Footer";
 
+import { findBestEpisodeGroup, getSeasonGroupIdToSplit } from "@/utils/seasonResolver";
+
 const PhotosSection = dynamic(() => import("@/components/ui/other/PhotosSection"));
 const TvShowRelatedSection = dynamic(() => import("@/components/sections/TV/Details/Related"));
 const TvShowCastsSection = dynamic(() => import("@/components/sections/TV/Details/Casts"));
@@ -41,6 +43,7 @@ const TVShowDetailPage: NextPage<Params<{ id: number }>> = ({ params }) => {
           "similar",
           "reviews",
           "watch/providers",
+          "episode_groups" as any,
         ]);
         if (res?.id) return { data: res };
       } catch (err) {
@@ -71,6 +74,11 @@ const TVShowDetailPage: NextPage<Params<{ id: number }>> = ({ params }) => {
     );
   }
 
+  const splitGroupId = getSeasonGroupIdToSplit(tv);
+  const bestGroup = splitGroupId ? findBestEpisodeGroup(tv.episode_groups) : null;
+  // If group has specials, seasons count is group_count - 1
+  const overrideSeasonCount = bestGroup ? Math.max(1, bestGroup.group_count - 1) : undefined;
+
   return (
     <div className="flex w-full flex-col overflow-x-hidden">
       <Suspense fallback={<Skeleton className="h-[62dvh] w-full rounded-none opacity-20" />}>
@@ -81,8 +89,8 @@ const TVShowDetailPage: NextPage<Params<{ id: number }>> = ({ params }) => {
         />
 
         <div className="relative z-10 flex flex-col gap-8 pt-2 pb-16 md:gap-11">
-          <SeriesFacts show={tv} />
-          <TvShowsSeasonsSelection ref={targetRef} id={Number(id)} seasons={tv.seasons || []} />
+          <SeriesFacts show={tv} overrideSeasonCount={overrideSeasonCount} />
+          <TvShowsSeasonsSelection ref={targetRef} id={Number(id)} seasons={tv.seasons || []} tvShow={tv} />
           <TvShowCastsSection casts={tv.credits?.cast || []} />
           <PhotosSection images={tv.images?.backdrops || []} type="tv" heading="row" />
           <TvShowRelatedSection tv={tv} />

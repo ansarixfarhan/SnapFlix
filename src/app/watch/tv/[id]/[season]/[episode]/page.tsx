@@ -10,14 +10,17 @@ import { useDocumentTitle } from "@mantine/hooks";
 import { NextPage } from "next";
 import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IoArrowBack } from "react-icons/io5";
-import { FaPlay, FaForwardStep } from "react-icons/fa6";
+import { IoArrowBack, IoChevronDown } from "react-icons/io5";
+import { FaPlay, FaForwardStep, FaClock } from "react-icons/fa6";
 import { getImageUrl } from "@/utils/movies";
 import { cn } from "@/utils/helpers";
 import BookmarkButton from "@/components/ui/button/BookmarkButton";
 import ShareButton from "@/components/ui/button/ShareButton";
 import type { SavedMovieDetails } from "@/types/movie";
 import NativeWebPlayer from "@/components/player/NativeWebPlayer";
+
+import { getTvDetails, getTvEpisodeGroup } from "@/actions/catalog";
+import { getSeasonGroupIdToSplit, resolveGroupToSeasons, type ResolvedSeason } from "@/utils/seasonResolver";
 
 const WatchTvPage: NextPage<
   Params<{ id: string; season: string; episode: string }>
@@ -34,6 +37,17 @@ const WatchTvPage: NextPage<
   // Season selected in bottom episodes list
   const [selectedSeason, setSelectedSeason] = useState(Number(initialSeason) || 1);
 
+  // Show More / View More episode list toggle (matching SnapFlix-App SeasonList pattern)
+  const [isEpisodesExpanded, setIsEpisodesExpanded] = useState<boolean>(() => {
+    return (Number(initialEpisode) || 1) > 5;
+  });
+
+  useEffect(() => {
+    if (selectedSeason === currentSeason && currentEpisode > 5) {
+      setIsEpisodesExpanded(true);
+    }
+  }, [selectedSeason, currentSeason, currentEpisode]);
+
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
@@ -43,8 +57,10 @@ const WatchTvPage: NextPage<
   const { data: tvDetails } = useQuery({
     queryKey: ["tv-details", id],
     queryFn: async () => {
+      const serverResult = await getTvDetails(Number(id));
+      if ("data" in serverResult) return serverResult.data;
       try {
-        const res = await tmdb.tvShows.details(Number(id));
+        const res = await tmdb.tvShows.details(Number(id), ["episode_groups" as any]);
         return res || null;
       } catch (e) {
         return null;
@@ -53,7 +69,52 @@ const WatchTvPage: NextPage<
     staleTime: 1000 * 60 * 60,
   });
 
-  // Fetch season episodes for currently selected season
+  // Check if series has episode groups to split continuous episodes
+  const splitGroupId = useMemo(() => getSeasonGroupIdToSplit(tvDetails), [tvDetails]);
+
+  const { data: groupResult } = useQuery({
+    queryKey: ["tv-episode-group", splitGroupId],
+    queryFn: () => (splitGroupId ? getTvEpisodeGroup(splitGroupId) : null),
+    enabled: Boolean(splitGroupId),
+    staleTime: 1000 * 60 * 60,
+  });
+
+  const groupData = groupResult && "data" in groupResult ? groupResult.data : null;
+  const resolvedGroupSeasons: ResolvedSeason[] | null = useMemo(() => {
+    if (!groupData) return null;
+    return resolveGroupToSeasons(groupData);
+  }, [groupData]);
+
+  const seriesName = tvDetails?.name || tvDetails?.original_name || "";
+  const displaySeriesName = seriesName || "TV Series";
+  const now = Date.now();
+
+  const seasonsList = useMemo(() => {
+    if (resolvedGroupSeasons && resolvedGroupSeasons.length > 0) {
+      return resolvedGroupSeasons.filter((s) => {
+        if (s.season_number <= 0) return false;
+        if (s.air_date) {
+          const air = new Date(s.air_date).getTime();
+          if (!isNaN(air) && air > now) return false;
+        }
+        return true;
+      });
+    }
+    return ((tvDetails?.seasons || []) as any[]).filter((s: any) => {
+      if (s.season_number <= 0) return false;
+      if (s.air_date) {
+        const air = new Date(s.air_date).getTime();
+        if (!isNaN(air) && air > now) return false;
+      }
+      return true;
+    });
+  }, [resolvedGroupSeasons, tvDetails?.seasons, now]);
+
+  const activeGroupSeason = useMemo(() => {
+    return resolvedGroupSeasons?.find((s: any) => s.season_number === selectedSeason);
+  }, [resolvedGroupSeasons, selectedSeason]);
+
+  // Fetch season episodes for currently selected season (only if not preloaded from episode group)
   const { data: seasonData } = useQuery({
     queryKey: ["tv-season-episodes", id, selectedSeason],
     queryFn: async () => {
@@ -64,18 +125,27 @@ const WatchTvPage: NextPage<
         return null;
       }
     },
+    enabled: !activeGroupSeason?.episodes,
     staleTime: 1000 * 60 * 60,
   });
 
-  const seriesName = tvDetails?.name || tvDetails?.original_name || "";
-  const displaySeriesName = seriesName || "TV Series";
-  const seasonsList = useMemo(() => {
-    return (tvDetails?.seasons || []).filter((s) => s.season_number > 0);
-  }, [tvDetails?.seasons]);
+  const rawEpisodes = activeGroupSeason?.episodes || seasonData?.episodes || [];
 
-  const episodesList = seasonData?.episodes || [];
-  const currentEpisodeData = episodesList.find(
-    (e) => e.episode_number === currentEpisode && selectedSeason === currentSeason
+  const releasedEpisodes = useMemo(() => {
+    if (!rawEpisodes || rawEpisodes.length === 0) return [];
+    return rawEpisodes.filter((ep: any) => {
+      if (!ep.air_date) return true;
+      const air = new Date(ep.air_date).getTime();
+      return !isNaN(air) ? air <= now : true;
+    });
+  }, [rawEpisodes, now]);
+
+  const episodesList = releasedEpisodes.length > 0 ? releasedEpisodes : rawEpisodes;
+  const currentEpisodeData = (rawEpisodes || episodesList).find(
+    (e: any) => e.episode_number === currentEpisode || e.absolute_episode_number === currentEpisode
+  );
+  const isCurrentUnreleased = Boolean(
+    currentEpisodeData?.air_date && new Date(currentEpisodeData.air_date).getTime() > now
   );
 
   useEffect(() => {
@@ -221,22 +291,61 @@ const WatchTvPage: NextPage<
             : "w-full aspect-video lg:aspect-auto lg:flex-1 lg:h-full z-30 shadow-2xl lg:border-r border-white/10"
         )}
       >
-        {/* Native Web Player */}
-        <NativeWebPlayer
-          tmdbId={Number(id)}
-          title={seriesName}
-          year={releaseYear}
-          type="tv"
-          season={playerSeason}
-          episode={playerEpisode}
-          episodeTitle={currentEpisodeData?.name}
-          episodes={episodesList}
-          hasNextEpisode={hasNextEpisode}
-          onNextEpisode={() => handleSelectEpisode(currentSeason, currentEpisode + 1)}
-          onSelectEpisode={handleSelectEpisode}
-          originalLanguage={(tvDetails as any)?.original_language}
-          onBack={handleBack}
-        />
+        {/* Native Web Player or Unreleased Banner */}
+        {isCurrentUnreleased ? (
+          <div className="flex flex-col items-center justify-center size-full bg-black/95 p-6 text-center text-white space-y-4">
+            <div className="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
+              <FaClock size={28} />
+            </div>
+            <div className="space-y-1.5 max-w-md">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                Coming Soon
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black text-white">
+                {seriesName} — S{currentSeason}:E{currentEpisode}
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-400">
+                This episode has not aired yet. Scheduled to release on:{" "}
+                <span className="text-white font-semibold block mt-1">
+                  {new Date(currentEpisodeData!.air_date!).toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </span>
+              </p>
+            </div>
+            {episodesList.length > 0 && (
+              <Button
+                color="primary"
+                variant="solid"
+                className="font-bold text-xs mt-2"
+                onPress={() => handleSelectEpisode(currentSeason, episodesList[episodesList.length - 1].episode_number)}
+              >
+                Watch Latest Released Episode (Ep {episodesList[episodesList.length - 1].episode_number})
+              </Button>
+            )}
+          </div>
+        ) : (
+          <NativeWebPlayer
+            tmdbId={Number(id)}
+            title={seriesName}
+            year={releaseYear}
+            type="tv"
+            season={playerSeason}
+            episode={playerEpisode}
+            episodeTitle={currentEpisodeData?.name}
+            episodes={episodesList}
+            hasNextEpisode={hasNextEpisode}
+            onNextEpisode={() => handleSelectEpisode(currentSeason, currentEpisode + 1)}
+            onSelectEpisode={handleSelectEpisode}
+            originalLanguage={(tvDetails as any)?.original_language}
+            onBack={handleBack}
+            backdropUrl={getImageUrl(currentEpisodeData?.still_path || tvDetails?.backdrop_path, "backdrop")}
+            overview={currentEpisodeData?.overview || tvDetails?.overview}
+          />
+        )}
       </div>
 
       {/* 2. DETAILS & EPISODES (Scrollable in Portrait, Sidebar on Desktop, hidden in Landscape) */}
@@ -321,7 +430,7 @@ const WatchTvPage: NextPage<
                       }
                     }}
                   >
-                    {seasonsList.map((s) => (
+                    {seasonsList.map((s: any) => (
                       <SelectItem key={s.season_number.toString()}>
                         {s.name || `Season ${s.season_number}`}
                       </SelectItem>
@@ -333,7 +442,7 @@ const WatchTvPage: NextPage<
 
             {/* Vertical Episodes List */}
             <div className="space-y-2">
-              {episodesList.map((ep) => {
+              {(isEpisodesExpanded ? episodesList : episodesList.slice(0, 5)).map((ep) => {
                 const isPlaying =
                   ep.episode_number === currentEpisode && selectedSeason === currentSeason;
                 const thumbUrl = getImageUrl(
@@ -376,6 +485,11 @@ const WatchTvPage: NextPage<
                       <div className="flex items-center justify-between gap-1">
                         <h3 className="text-xs sm:text-sm font-semibold text-white truncate group-hover:text-primary transition-colors">
                           {ep.episode_number}. {ep.name}
+                          {(ep as any).absolute_episode_number && (ep as any).absolute_episode_number !== ep.episode_number && (
+                            <span className="text-[10px] text-gray-400 font-normal ml-1.5">
+                              (Overall #{(ep as any).absolute_episode_number})
+                            </span>
+                          )}
                         </h3>
                         {isPlaying && (
                           <Chip size="sm" color="danger" variant="flat" className="h-5 text-[10px] shrink-0 font-bold">
@@ -391,6 +505,28 @@ const WatchTvPage: NextPage<
                 );
               })}
             </div>
+
+            {/* Show More / Show Less Button */}
+            {episodesList.length > 5 && (
+              <button
+                type="button"
+                onClick={() => setIsEpisodesExpanded((prev) => !prev)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-xs font-semibold text-white transition active:scale-[0.98] cursor-pointer shadow-sm mt-3"
+              >
+                <span>
+                  {isEpisodesExpanded
+                    ? "Show Less"
+                    : `Show More (${episodesList.length - 5} More Episodes)`}
+                </span>
+                <IoChevronDown
+                  size={15}
+                  className={cn(
+                    "transition-transform duration-200 text-white/80",
+                    isEpisodesExpanded && "rotate-180"
+                  )}
+                />
+              </button>
+            )}
           </div>
 
           {/* Series Overview */}

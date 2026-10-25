@@ -27,6 +27,7 @@ import { MdHighQuality, MdReplay10, MdForward10 } from 'react-icons/md';
 import { Spinner, Button } from '@heroui/react';
 import { syncHistory } from '@/actions/histories';
 import { tmdb } from '@/api/tmdb';
+import { cn } from '@/utils/helpers';
 
 export interface SubtitleItem {
   title: string;
@@ -44,6 +45,7 @@ interface StreamItem {
   headers?: Record<string, string>;
   providerValue?: string;
   providerName?: string;
+  language?: string;
   subtitles?: SubtitleItem[];
 }
 
@@ -177,20 +179,50 @@ export function getStreamAudioLanguages(
 
   const langs = new Set<string>();
 
-  // 1. Check parentheses in server string: e.g. 'Movy - Delhi (Hindi) (Tamil)' -> ['Hindi', 'Tamil']
-  const parenMatches = Array.from(server.matchAll(/\(([^)]+)\)/g)).map((m) => m[1]);
-  for (const p of parenMatches) {
-    const pLang = parseWordToLanguage(p);
-    if (pLang) {
-      langs.add(pLang);
+  // 1. Direct language field from backend (Highest Priority)
+  if (stream.language) {
+    const raw = String(stream.language).trim();
+    if (raw.toLowerCase() === 'original') {
+      langs.add(defaultLang);
+      return Array.from(langs);
+    }
+    const parsed = parseWordToLanguage(raw);
+    if (parsed) {
+      langs.add(parsed);
+      return Array.from(langs);
     }
   }
-  if (langs.size > 0) {
+
+  // 2. Check explicit 'Original' / 'Original Audio' (MovieBox / Web servers)
+  if (sLower.includes('original')) {
+    langs.add(defaultLang);
     return Array.from(langs);
   }
 
-  // 2. Direct language check across all known languages in server name or tag
-  // Handles strings with multiple languages like: "Hindi, English, Tamil, Telugu, Japanese"
+  // 3. Check parentheses in server string:
+  // In multi-audio servers like 'Movy - Delhi (Hindi) (English)', the LAST parenthesized token is the specific audio!
+  const parenMatches = Array.from(server.matchAll(/\(([^)]+)\)/g)).map((m) => m[1]);
+  if (parenMatches.length > 0) {
+    // Check the last parenthesis first (specific audio track)
+    const lastP = parenMatches[parenMatches.length - 1];
+    const lastLang = parseWordToLanguage(lastP);
+    if (lastLang) {
+      langs.add(lastLang);
+      return Array.from(langs);
+    }
+    for (const p of parenMatches) {
+      const pLang = parseWordToLanguage(p);
+      if (pLang) {
+        langs.add(pLang);
+      }
+    }
+    if (langs.size > 0) {
+      return Array.from(langs);
+    }
+  }
+
+  // 4. Direct language check across all known languages in server name or tag
+  // Handles strings with explicit languages like: "Inception - Tamil - 1080p", "Hindi, English"
   for (const [lang, aliases] of Object.entries(LANG_CODE_ALIASES)) {
     const matched = aliases.some((a) => {
       if (a.length <= 3) {
@@ -212,28 +244,12 @@ export function getStreamAudioLanguages(
     return Array.from(langs);
   }
 
-  // 3. 'Original' / 'Original Audio' -> movie's original language (e.g. MovieBox)
-  if (sLower.includes('original')) {
-    langs.add(defaultLang);
-    return Array.from(langs);
-  }
-
-  // 4. Release title check (e.g. 'Fight Club Dual Audio [Hindi - English]')
+  // 5. Fallback: only if server gave NO language clues, check title metadata
   if (title.includes('dual audio') || title.includes('dual-audio')) {
     langs.add('Hindi');
     langs.add('English');
-  } else {
-    for (const [lang, aliases] of Object.entries(LANG_CODE_ALIASES)) {
-      const matched = aliases.some((a) => {
-        if (a.length <= 3) {
-          return new RegExp(`\\b${a}\\b`, 'i').test(title);
-        }
-        return title.includes(a);
-      });
-      if (matched) {
-        langs.add(lang);
-      }
-    }
+  } else if (/\[hindi\]|\(hindi\)/i.test(title)) {
+    langs.add('Hindi');
   }
 
   // Fallback to defaultLang if no specific language tag is detected
@@ -271,6 +287,8 @@ interface NativeWebPlayerProps {
   contentRating?: string;
   ratingAdvisory?: string;
   onBack?: () => void;
+  backdropUrl?: string;
+  overview?: string;
 }
 
 function formatTime(seconds: number): string {
@@ -301,6 +319,8 @@ export default function NativeWebPlayer({
   contentRating,
   ratingAdvisory,
   onBack,
+  backdropUrl,
+  overview,
 }: NativeWebPlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -315,6 +335,7 @@ export default function NativeWebPlayer({
 
   // Playback States
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasStartedPlayback, setHasStartedPlayback] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -329,6 +350,10 @@ export default function NativeWebPlayer({
   const activeEpisodeRef = useRef<HTMLDivElement | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+
+  // Backdrop & Overview for Netflix-Style Pause Overlay
+  const [fetchedBackdrop, setFetchedBackdrop] = useState<string | null>(null);
+  const [fetchedOverview, setFetchedOverview] = useState<string | null>(null);
 
   // YouTube-Style Double-Tap Seek States & Timers
   const [doubleTapSide, setDoubleTapSide] = useState<'left' | 'right' | null>(null);
@@ -380,8 +405,16 @@ export default function NativeWebPlayer({
             cert = inRating || usRating || gbRating || anyRating;
           }
 
-          if (detailsRes.status === 'fulfilled' && detailsRes.value?.genres) {
-            genresList = detailsRes.value.genres.map((g) => g.name);
+          if (detailsRes.status === 'fulfilled') {
+            if (detailsRes.value?.genres) {
+              genresList = detailsRes.value.genres.map((g) => g.name);
+            }
+            if (detailsRes.value?.backdrop_path) {
+              setFetchedBackdrop(`https://image.tmdb.org/t/p/w1280${detailsRes.value.backdrop_path}`);
+            }
+            if (detailsRes.value?.overview) {
+              setFetchedOverview(detailsRes.value.overview);
+            }
           }
         } else {
           const [releaseDatesRes, detailsRes] = await Promise.allSettled([
@@ -402,8 +435,16 @@ export default function NativeWebPlayer({
               results.flatMap((r) => r.release_dates).find((d) => d.certification?.trim())?.certification?.trim();
           }
 
-          if (detailsRes.status === 'fulfilled' && detailsRes.value?.genres) {
-            genresList = detailsRes.value.genres.map((g) => g.name);
+          if (detailsRes.status === 'fulfilled') {
+            if (detailsRes.value?.genres) {
+              genresList = detailsRes.value.genres.map((g) => g.name);
+            }
+            if (detailsRes.value?.backdrop_path) {
+              setFetchedBackdrop(`https://image.tmdb.org/t/p/w1280${detailsRes.value.backdrop_path}`);
+            }
+            if (detailsRes.value?.overview) {
+              setFetchedOverview(detailsRes.value.overview);
+            }
           }
         }
 
@@ -719,54 +760,49 @@ export default function NativeWebPlayer({
       if (trackIdx !== -1) {
         hlsRef.current.audioTrack = trackIdx;
         setCurrentHlsAudioTrack(trackIdx);
-        setTimeout(() => setShowAudioDrawer(false), 300);
+        setShowAudioDrawer(false);
         return;
       }
     }
 
-    // 2. Check if currently playing stream ALREADY belongs to targetLang
-    if (selectedStream) {
-      const currentProv = providerResults.find((p) => p.providerName === selectedStream.providerName);
-      const currentStreamLangs = getStreamAudioLanguages(
-        selectedStream,
-        currentProv?.infoTitle,
-        originalLanguage
-      );
-      if (currentStreamLangs.includes(targetLang)) {
-        setTimeout(() => setShowAudioDrawer(false), 200);
-        return;
-      }
-    }
-
-    // 3. Find best playable stream supporting targetLang across providers
+    // 2. Find best playable stream supporting targetLang across providers
     let candidateStream: StreamItem | null = null;
 
-    // A. Prioritize CURRENT provider first to avoid unnecessary provider switching
+    // A. Search within current provider first for a stream supporting targetLang
     if (selectedStream) {
       const currentProv = providerResults.find((p) => p.providerName === selectedStream.providerName);
       if (currentProv) {
-        const match = currentProv.streams.find((s) => {
+        const matches = currentProv.streams.filter((s) => {
           if (!isPlayableStream(s)) return false;
           const langs = getStreamAudioLanguages(s, currentProv.infoTitle, originalLanguage);
           return langs.includes(targetLang);
         });
-        if (match) {
-          candidateStream = { ...match, providerName: currentProv.providerName };
+        const diff = matches.find((s) => s.link !== selectedStream.link);
+        if (diff) {
+          candidateStream = { ...diff, providerName: currentProv.providerName };
+        } else if (matches.length > 0 && matches[0].link !== selectedStream.link) {
+          candidateStream = { ...matches[0], providerName: currentProv.providerName };
         }
       }
     }
 
-    // B. If current provider doesn't have targetLang, check remaining providers
+    // B. If current provider has no alternative stream for targetLang, search ALL providers
     if (!candidateStream) {
       for (const prov of providerResults) {
-        const match = prov.streams.find((s) => {
+        const matches = prov.streams.filter((s) => {
           if (!isPlayableStream(s)) return false;
           const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
           return langs.includes(targetLang);
         });
-        if (match) {
-          candidateStream = { ...match, providerName: prov.providerName };
-          break;
+
+        if (matches.length > 0) {
+          const diff = matches.find((s) => s.link !== selectedStream?.link);
+          if (diff) {
+            candidateStream = { ...diff, providerName: prov.providerName };
+            break;
+          } else if (!candidateStream) {
+            candidateStream = { ...matches[0], providerName: prov.providerName };
+          }
         }
       }
     }
@@ -774,14 +810,11 @@ export default function NativeWebPlayer({
     if (candidateStream && candidateStream.link !== selectedStream?.link) {
       resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
       setSelectedStream(candidateStream);
-      setTimeout(() => setShowAudioDrawer(false), 350);
+      setShowAudioDrawer(false);
       return;
     }
 
-    // Close drawer after short visual confirmation so user sees checkmark
-    setTimeout(() => {
-      setShowAudioDrawer(false);
-    }, 350);
+    setShowAudioDrawer(false);
   };
 
   // Aggregated qualities across all providers for CURRENT activeLanguage
@@ -1130,7 +1163,7 @@ export default function NativeWebPlayer({
           if (episode) params.append('episode', String(episode));
         }
 
-        const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+        const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
         const targetUrl = `${providerApiBase}/api/provider/resolve?${params.toString()}`;
 
         let res: Response;
@@ -1177,17 +1210,23 @@ export default function NativeWebPlayer({
           for (const prov of data.results) {
             const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
             if (match) {
-              chosen = { ...match, providerName: prov.providerName };
+              const streamChoice = { ...match, providerName: prov.providerName };
+              chosen = streamChoice;
+              const initialLangs = getStreamAudioLanguages(streamChoice, prov.infoTitle, originalLanguage);
+              setActiveLanguage(initialLangs[0] || 'English');
               break;
             }
           }
         }
 
         if (!chosen && data.results[0]?.streams?.length > 0) {
-          chosen = {
+          const fallbackChoice = {
             ...data.results[0].streams[0],
             providerName: data.results[0].providerName,
           };
+          chosen = fallbackChoice;
+          const initialLangs = getStreamAudioLanguages(fallbackChoice, data.results[0].infoTitle, originalLanguage);
+          setActiveLanguage(initialLangs[0] || 'English');
         }
 
         setSelectedStream(chosen);
@@ -1198,7 +1237,7 @@ export default function NativeWebPlayer({
           try {
             const bgParams = new URLSearchParams(params);
             bgParams.append('refresh', 'true');
-            const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+            const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
             const bgRes = await fetch(`${providerApiBase}/api/provider/resolve?${bgParams.toString()}`);
             const bgData = await bgRes.json();
             if (active && bgData.success && Array.isArray(bgData.results)) {
@@ -1251,7 +1290,7 @@ export default function NativeWebPlayer({
     // proxy-stream because the browser cannot set custom Referer/Origin headers on XMLHttpRequest.
     // Streams without custom headers play directly in the browser to avoid server bottlenecks.
     if (hasHeaders) {
-      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
       const headersJson = JSON.stringify(stream.headers || {});
       return `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
         stream.link
@@ -1322,11 +1361,46 @@ export default function NativeWebPlayer({
 
           if (hls.audioTracks && hls.audioTracks.length > 0) {
             setHlsAudioTracks(hls.audioTracks);
-            setCurrentHlsAudioTrack(hls.audioTrack);
+            const preferred = activeLanguage || 'Hindi';
+            const aliases = LANG_CODE_ALIASES[preferred] || [preferred.toLowerCase()];
+            const matchIdx = hls.audioTracks.findIndex((t: any) => {
+              const tLang = (t.lang || '').toLowerCase();
+              const tName = (t.name || '').toLowerCase();
+              return aliases.some((a) => tLang === a || tName.includes(a));
+            });
+            if (matchIdx !== -1 && hls.audioTrack !== matchIdx) {
+              hls.audioTrack = matchIdx;
+              setCurrentHlsAudioTrack(matchIdx);
+            } else {
+              setCurrentHlsAudioTrack(hls.audioTrack);
+            }
           }
 
           if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
             setHlsSubtitles(hls.subtitleTracks);
+          }
+        });
+
+        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
+          if (data?.audioTracks && data.audioTracks.length > 0) {
+            setHlsAudioTracks(data.audioTracks);
+            const preferred = activeLanguage || 'Hindi';
+            const aliases = LANG_CODE_ALIASES[preferred] || [preferred.toLowerCase()];
+            const matchIdx = data.audioTracks.findIndex((t: any) => {
+              const tLang = (t.lang || '').toLowerCase();
+              const tName = (t.name || '').toLowerCase();
+              return aliases.some((a) => tLang === a || tName.includes(a));
+            });
+            if (matchIdx !== -1 && hls.audioTrack !== matchIdx) {
+              hls.audioTrack = matchIdx;
+              setCurrentHlsAudioTrack(matchIdx);
+            }
+          }
+        });
+
+        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
+          if (typeof data?.id === 'number') {
+            setCurrentHlsAudioTrack(data.id);
           }
         });
 
@@ -1364,7 +1438,7 @@ export default function NativeWebPlayer({
                 // If direct failed and stream has custom headers, try proxy as fallback
                 const hasHeaders = selectedStream.headers && Object.keys(selectedStream.headers).length > 0;
                 if (hasHeaders && hls.url && !hls.url.includes('proxy-stream')) {
-                  const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '');
+                  const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
                   const proxyUrl = `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
                     selectedStream.link
@@ -1590,6 +1664,37 @@ export default function NativeWebPlayer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [triggerControls]);
 
+  const [showPauseHero, setShowPauseHero] = useState(false);
+  const pauseHeroTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const currentEp = episodes?.find((e) => e.episode_number === episode);
+  const epStill = currentEp?.still_path
+    ? currentEp.still_path.startsWith('http')
+      ? currentEp.still_path
+      : `https://image.tmdb.org/t/p/w1280${currentEp.still_path}`
+    : null;
+  const activeBackdropUrl = backdropUrl || epStill || fetchedBackdrop;
+  const activeOverview = overview || currentEp?.overview || fetchedOverview;
+
+  useEffect(() => {
+    if (!isPlaying && hasStartedPlayback && !loadingStreams && !error && !playbackError && Boolean(activeBackdropUrl)) {
+      if (pauseHeroTimerRef.current) clearTimeout(pauseHeroTimerRef.current);
+      pauseHeroTimerRef.current = setTimeout(() => {
+        setShowPauseHero(true);
+        setShowQualityMenu(false);
+        setShowAudioDrawer(false);
+        setShowNextEpPreview(false);
+      }, 1000);
+    } else {
+      if (pauseHeroTimerRef.current) clearTimeout(pauseHeroTimerRef.current);
+      setShowPauseHero(false);
+    }
+
+    return () => {
+      if (pauseHeroTimerRef.current) clearTimeout(pauseHeroTimerRef.current);
+    };
+  }, [isPlaying, hasStartedPlayback, loadingStreams, error, playbackError, activeBackdropUrl]);
+
   return (
     <div
       ref={containerRef}
@@ -1610,7 +1715,10 @@ export default function NativeWebPlayer({
         ref={videoRef}
         playsInline
         crossOrigin="anonymous"
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => {
+          setIsPlaying(true);
+          setHasStartedPlayback(true);
+        }}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={() => {
           if (videoRef.current) {
@@ -1643,6 +1751,121 @@ export default function NativeWebPlayer({
           />
         )}
       </video>
+
+      {/* 1.1 Netflix-Style Pause Hero Image Overlay (Fades in over 0.5s after 1s paused) */}
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          togglePlay();
+        }}
+        className={cn(
+          "absolute inset-0 z-15 flex flex-col justify-center px-4 sm:px-10 md:px-14 py-4 sm:py-8 select-none cursor-pointer overflow-hidden transition-opacity duration-500 ease-out",
+          showPauseHero ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        )}
+      >
+        {/* Backdrop Image with Subtle Slow Cinematic Scale & Brightness */}
+        {activeBackdropUrl && (
+          <div
+            className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 ease-out scale-100"
+            style={{
+              backgroundImage: `url(${activeBackdropUrl})`,
+              filter: "brightness(0.65) contrast(1.05)",
+            }}
+          />
+        )}
+
+        {/* Authentic Netflix Vignettes: Darker on bottom and left, subtle vignette all around */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/35 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent pointer-events-none" />
+
+        {/* Bottom Left Content: Badge, Title, S/E, Synopsis, Action Buttons */}
+        <div className="relative z-10 max-w-xl space-y-1 sm:space-y-2 md:space-y-3 pointer-events-auto">
+          {/* Tag row */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-[#E50914] text-white">
+              {type === "tv" ? "Series" : "Movie"}
+            </span>
+            {year && (
+              <span className="text-[10px] sm:text-xs text-white/70 font-semibold">{year}</span>
+            )}
+            {resolvedRating && (
+              <span className="border border-white/25 px-1.5 py-0.2 rounded text-[9px] sm:text-[10px] text-white/80 font-bold">
+                {resolvedRating}
+              </span>
+            )}
+          </div>
+
+          {/* Title */}
+          <h2 className="text-base sm:text-3xl md:text-5xl font-black text-white tracking-tight leading-tight line-clamp-1 drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
+            {title}
+          </h2>
+
+          {/* TV Episode Info */}
+          {type === "tv" && (
+            <p className="text-xs sm:text-sm md:text-base font-bold text-[#E50914] tracking-wide drop-shadow-md line-clamp-1">
+              Season {season || 1}: Episode {episode || 1}
+              {episodeTitle ? ` — "${episodeTitle}"` : ""}
+            </p>
+          )}
+
+          {/* Synopsis (hidden on mobile portrait to avoid crowding ~200px player, visible on sm+ / tablet / desktop) */}
+          {activeOverview && (
+            <p className="text-xs sm:text-sm text-gray-300 font-normal leading-relaxed line-clamp-2 sm:line-clamp-3 drop-shadow-md max-w-lg hidden sm:block">
+              {activeOverview}
+            </p>
+          )}
+
+          {/* Action Buttons Row: Resume, Next Episode, Browse Episodes */}
+          <div className="pt-1 sm:pt-2 flex flex-wrap items-center gap-1.5 sm:gap-2.5">
+            {/* Resume Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePlay();
+              }}
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full bg-white hover:bg-gray-200 text-black font-extrabold text-xs sm:text-sm transition-all transform active:scale-95 shadow-[0_4px_20px_rgba(0,0,0,0.7)] cursor-pointer"
+            >
+              <IoPlay size={15} className="fill-black ml-0.5" />
+              <span>Resume</span>
+            </button>
+
+            {/* Next Episode Button */}
+            {(hasNextEpisode || onNextEpisode) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNextEpisode?.();
+                }}
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs sm:text-sm transition-all transform active:scale-95 shadow-md cursor-pointer"
+              >
+                <IoPlaySkipForward size={12} />
+                <span>Next Episode</span>
+              </button>
+            )}
+
+            {/* Episodes Tray Button */}
+            {(type === "tv" || (episodes && episodes.length > 0)) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEpisodesTray(true);
+                }}
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs sm:text-sm transition-all transform active:scale-95 shadow-md cursor-pointer"
+              >
+                <IoTvOutline size={14} />
+                <span>Episodes</span>
+              </button>
+            )}
+
+            <span className="text-[11px] text-gray-400 font-medium hidden sm:inline ml-1">
+              Press Space to play
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* 2. Loading State (Netflix-Themed with Top-Left Content Rating Badge) */}
       {loadingStreams && (
@@ -1756,7 +1979,7 @@ export default function NativeWebPlayer({
       )}
 
       {/* 5.1 Center YouTube-Style Transport Controls (Rewind 10s | Large Play/Pause | Forward 10s) */}
-      {!loadingStreams && !playbackError && (
+      {!loadingStreams && !playbackError && !showPauseHero && (
         <div
           className={`absolute inset-0 pointer-events-none flex items-center justify-center z-20 transition-opacity duration-300 ${
             showControls && !isBuffering ? 'opacity-100' : 'opacity-0'
@@ -1840,8 +2063,9 @@ export default function NativeWebPlayer({
 
       {/* 6. Top Bar (Title & Episode on Left | Quality, CC Audio & Subtitles, Next Episode on Right) */}
       <div
-        className={`absolute top-0 inset-x-0 px-3 sm:px-6 pt-2.5 sm:pt-4 pb-4 sm:pb-6 bg-gradient-to-b from-black/90 via-black/40 to-transparent flex items-center justify-between z-30 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
+        className={`absolute top-0 inset-x-0 px-3 sm:px-6 pt-2.5 sm:pt-4 pb-4 sm:pb-6 bg-gradient-to-b from-black/90 via-black/40 to-transparent flex items-center justify-between z-30 transition-opacity duration-300 ${
+          showControls || !isPlaying ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
       >
         {/* Left: Back Button + Title + Subtitle/Episode */}
         <div className="flex items-center gap-3">
@@ -1854,7 +2078,11 @@ export default function NativeWebPlayer({
               <IoArrowBack size={19} />
             </button>
           )}
-          <div className="flex flex-col">
+          <div
+            className={`flex flex-col transition-opacity duration-300 ${
+              showPauseHero ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
+          >
             <h1 className="text-sm sm:text-base font-extrabold uppercase tracking-wide text-white line-clamp-1 drop-shadow-md">
               {title}
             </h1>
@@ -1867,7 +2095,11 @@ export default function NativeWebPlayer({
         </div>
 
         {/* Top-Right Actions: Quality + Audio & Subtitles + Next Episode */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div
+          className={`flex items-center gap-2 sm:gap-3 transition-opacity duration-300 ${
+            showPauseHero ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+          }`}
+        >
           {/* Quality Button with Popover */}
           <div
             className="relative"
@@ -2147,8 +2379,9 @@ export default function NativeWebPlayer({
 
       {/* 7. Bottom Control Bar (Sleek Scrubber + Timestamp & Fullscreen) */}
       <div
-        className={`absolute bottom-0 inset-x-0 px-3 sm:px-6 pt-6 sm:pt-8 pb-1.5 sm:pb-3 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-0.5 sm:gap-1.5 z-30 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
+        className={`absolute bottom-0 inset-x-0 px-3 sm:px-6 pt-6 sm:pt-8 pb-1.5 sm:pb-3 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-0.5 sm:gap-1.5 z-30 transition-opacity duration-300 ${
+          (showControls || !isPlaying) && !showPauseHero ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
       >
         {/* Scrubber Slider (Netflix Red Style) */}
         <div className="relative w-full py-1 sm:py-2 flex items-center group/scrubber cursor-pointer select-none">
@@ -2199,20 +2432,20 @@ export default function NativeWebPlayer({
             <span className="text-white/60">{formatTime(duration)}</span>
           </div>
 
-          {/* Center: Episodes ^ button (TV & Anime) - Positioned dead-center of player bar, hidden in portrait */}
+          {/* Center: Episodes ^ button (TV & Anime) - Positioned dead-center of player bar */}
           {(type === 'tv' || (episodes && episodes.length > 0)) && (
-            <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto portrait:hidden">
+            <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowEpisodesTray(!showEpisodesTray);
                 }}
-                className="flex items-center gap-2 text-[14px] sm:text-[15px] font-bold text-white hover:text-white transition cursor-pointer px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 backdrop-blur-md active:scale-95 shadow-md"
+                className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-[14px] font-bold text-white hover:text-white transition cursor-pointer px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 backdrop-blur-md active:scale-95 shadow-md"
               >
                 <span>Episodes</span>
                 <IoChevronUp
-                  size={16}
+                  size={15}
                   className={`transition-transform duration-200 ${showEpisodesTray ? 'rotate-180' : ''}`}
                 />
               </button>

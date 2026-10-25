@@ -9,9 +9,9 @@ import { Button, Chip } from "@heroui/react";
 import { useDocumentTitle } from "@mantine/hooks";
 import { NextPage } from "next";
 import { useRouter } from "next/navigation";
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IoArrowBack } from "react-icons/io5";
-import { FaPlay, FaForwardStep } from "react-icons/fa6";
+import { FaPlay, FaForwardStep, FaClock } from "react-icons/fa6";
 import { getImageUrl } from "@/utils/movies";
 import { cn } from "@/utils/helpers";
 import BookmarkButton from "@/components/ui/button/BookmarkButton";
@@ -60,8 +60,22 @@ const WatchAnimePage: NextPage<Params<{ id: string; episode: string }>> = ({ par
   });
 
   const animeTitle = animeDetails?.name || animeDetails?.original_name || "Anime";
+
+  // Filter out future unreleased episodes (e.g. The Apothecary Diaries future episodes)
+  const releasedEpisodes = useMemo(() => {
+    if (!seasonData?.episodes || seasonData.episodes.length === 0) return [];
+    const now = Date.now();
+    return seasonData.episodes.filter((ep: any) => {
+      if (!ep.air_date) return true;
+      const air = new Date(ep.air_date).getTime();
+      return !isNaN(air) ? air <= now : true;
+    });
+  }, [seasonData?.episodes]);
+
   const episodesList =
-    seasonData?.episodes && seasonData.episodes.length > 0
+    releasedEpisodes.length > 0
+      ? releasedEpisodes
+      : seasonData?.episodes && seasonData.episodes.length > 0
       ? seasonData.episodes
       : Array.from({ length: 24 }).map((_, i) => ({
           episode_number: i + 1,
@@ -69,9 +83,16 @@ const WatchAnimePage: NextPage<Params<{ id: string; episode: string }>> = ({ par
           overview: "Watch this episode on SnapFlix.",
           still_path: animeDetails?.backdrop_path || null,
           runtime: 24,
+          air_date: undefined as string | undefined,
         }));
 
-  const currentEpisodeData = episodesList.find((e) => e.episode_number === currentEpisode);
+  const currentEpisodeData: any = (seasonData?.episodes || episodesList).find(
+    (e: any) => e.episode_number === currentEpisode
+  );
+  const isCurrentUnreleased = Boolean(
+    currentEpisodeData?.air_date && new Date(currentEpisodeData.air_date).getTime() > Date.now()
+  );
+  const hasNextEpisode = releasedEpisodes.some((e: any) => e.episode_number === currentEpisode + 1);
 
   useEffect(() => {
     setCurrentEpisode(Number(initialEpisode) || 1);
@@ -189,8 +210,6 @@ const WatchAnimePage: NextPage<Params<{ id: string; episode: string }>> = ({ par
     saved_date: new Date().toISOString(),
   };
 
-  const hasNextEpisode = episodesList.some((e) => e.episode_number === currentEpisode + 1);
-
   const releaseYear = animeDetails?.first_air_date
     ? new Date(animeDetails.first_air_date).getFullYear()
     : 2025;
@@ -206,22 +225,61 @@ const WatchAnimePage: NextPage<Params<{ id: string; episode: string }>> = ({ par
             : "w-full aspect-video lg:aspect-auto lg:flex-1 lg:h-full z-30 shadow-2xl lg:border-r border-white/10"
         )}
       >
-        {/* Native Web Player */}
-        <NativeWebPlayer
-          tmdbId={Number(id)}
-          title={animeTitle}
-          year={releaseYear}
-          type="tv"
-          season={1}
-          episode={playerEpisode}
-          episodeTitle={currentEpisodeData?.name}
-          episodes={episodesList}
-          hasNextEpisode={hasNextEpisode}
-          onNextEpisode={() => handleSelectEpisode(currentEpisode + 1)}
-          onSelectEpisode={(s, ep) => handleSelectEpisode(ep)}
-          originalLanguage={(animeDetails as any)?.original_language}
-          onBack={handleBack}
-        />
+        {/* Native Web Player or Unreleased Banner */}
+        {isCurrentUnreleased ? (
+          <div className="flex flex-col items-center justify-center size-full bg-black/95 p-6 text-center text-white space-y-4">
+            <div className="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
+              <FaClock size={28} />
+            </div>
+            <div className="space-y-1.5 max-w-md">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                Coming Soon
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black text-white">
+                {animeTitle} — Episode {currentEpisode}
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-400">
+                This episode has not aired yet. Scheduled to release on:{" "}
+                <span className="text-white font-semibold block mt-1">
+                  {new Date(currentEpisodeData!.air_date!).toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </span>
+              </p>
+            </div>
+            {episodesList.length > 0 && (
+              <Button
+                color="primary"
+                variant="solid"
+                className="font-bold text-xs mt-2"
+                onPress={() => handleSelectEpisode(episodesList[episodesList.length - 1].episode_number)}
+              >
+                Watch Latest Released Episode ({episodesList[episodesList.length - 1].episode_number})
+              </Button>
+            )}
+          </div>
+        ) : (
+          <NativeWebPlayer
+            tmdbId={Number(id)}
+            title={animeTitle}
+            year={releaseYear}
+            type="tv"
+            season={1}
+            episode={playerEpisode}
+            episodeTitle={currentEpisodeData?.name}
+            episodes={episodesList}
+            hasNextEpisode={hasNextEpisode}
+            onNextEpisode={() => handleSelectEpisode(currentEpisode + 1)}
+            onSelectEpisode={(s, ep) => handleSelectEpisode(ep)}
+            originalLanguage={(animeDetails as any)?.original_language}
+            onBack={handleBack}
+            backdropUrl={getImageUrl(currentEpisodeData?.still_path || animeDetails?.backdrop_path, "backdrop")}
+            overview={currentEpisodeData?.overview || animeDetails?.overview}
+          />
+        )}
       </div>
 
       {/* 2. DETAILS & EPISODES (Scrollable in Portrait, Sidebar on Desktop, hidden in Landscape) */}

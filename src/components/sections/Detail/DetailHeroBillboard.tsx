@@ -8,7 +8,7 @@ import Trailer from "@/components/ui/overlay/Trailer";
 import { SavedMovieDetails } from "@/types/movie";
 import { getImageUrl, movieDurationString, mutateMovieTitle, mutateTvShowTitle } from "@/utils/movies";
 import Link from "next/link";
-import { FaPlay } from "react-icons/fa6";
+import { FaPlay, FaClock } from "react-icons/fa6";
 import { IoListOutline } from "react-icons/io5";
 
 interface DetailHeroBillboardProps {
@@ -42,6 +42,7 @@ const DetailHeroBillboard: React.FC<DetailHeroBillboardProps> = ({
   const releaseDate = media.release_date || media.first_air_date;
   const parsedDate = releaseDate ? new Date(releaseDate) : null;
   const releaseYear = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.getFullYear() : null;
+  const isNotReleased = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.getTime() > Date.now() : false;
   const playHref = isTv ? `/watch/tv/${media.id}/1/1` : `/watch/movie/${media.id}`;
   const bgUrl = getImageUrl(media.backdrop_path || media.images?.backdrops?.[0]?.file_path, "backdrop", true);
   const matchPercentage =
@@ -125,13 +126,20 @@ const DetailHeroBillboard: React.FC<DetailHeroBillboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto pt-1 no-scrollbar">
-          <Link
-            href={playHref}
-            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-black transition active:scale-95"
-          >
-            <FaPlay className="size-3.5" />
-            Play
-          </Link>
+          {isNotReleased && !isTv ? (
+            <div className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-amber-500/20 border border-amber-500/40 px-5 text-sm font-bold text-amber-400">
+              <FaClock className="size-3.5" />
+              Coming Soon ({releaseYear || "Upcoming"})
+            </div>
+          ) : (
+            <Link
+              href={playHref}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-black transition active:scale-95"
+            >
+              <FaPlay className="size-3.5" />
+              Play
+            </Link>
+          )}
           {isTv && onViewEpisodesClick && (
             <button
               type="button"

@@ -1618,7 +1618,7 @@ export default function NativeWebPlayer({
             (type !== 'tv' || (Number(item.season || 1) === mediaSeason && Number(item.episode || 1) === mediaEpisode))
         );
 
-        const cleanBackdrop = backdropPath || (backdropUrl && !backdropUrl.startsWith('http') ? backdropUrl : '');
+        const cleanBackdrop = backdropPath || backdropUrl || '';
         const cleanPoster = posterPath || '';
 
         if (existingIdx >= 0) {

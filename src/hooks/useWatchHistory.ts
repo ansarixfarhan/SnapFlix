@@ -33,15 +33,15 @@ export const writeGuestHistory = (list: HistoryDetail[]): void => {
 };
 
 const historyKey = (item: Pick<HistoryDetail, "type" | "media_id" | "season" | "episode">) =>
-  `${item.type}_${item.media_id}_${item.season}_${item.episode}`;
+  `${item.type}_${item.media_id}_${item.season || 0}_${item.episode || 0}`;
 
 /**
  * Combined watch history used by "Continue watching", the personalized home
  * billboard and the "mark as watched" control.
  *
  * Merges Supabase history (signed in users) with localStorage history
- * (guests, offline, or simply not synced yet), preferring the server copy
- * when both exist, then keeps only the most recently updated entry per show
+ * (guests, offline, or simply not synced yet), preferring whichever record
+ * is most recent, then keeps only the most recently updated entry per show
  * so a series only shows its latest watched episode.
  */
 export function useWatchHistory() {
@@ -60,14 +60,16 @@ export function useWatchHistory() {
       // 2. Fetch localStorage histories (for guests & offline)
       const guestItems = readGuestHistory();
 
-      // 3. Merge: prefer server items, append non-duplicate guest items
+      // 3. Merge: prefer whichever record has the latest updated_at
       const map = new Map<string, HistoryDetail>();
       for (const item of serverItems) {
         map.set(historyKey(item), item);
       }
       for (const item of guestItems) {
-        if (!map.has(historyKey(item))) {
-          map.set(historyKey(item), item);
+        const key = historyKey(item);
+        const existing = map.get(key);
+        if (!existing || new Date(item.updated_at).getTime() > new Date(existing.updated_at).getTime()) {
+          map.set(key, item);
         }
       }
 

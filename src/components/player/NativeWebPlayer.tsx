@@ -1166,6 +1166,10 @@ export default function NativeWebPlayer({
           if (episode) params.append('episode', String(episode));
         }
 
+        if (activeLanguage) {
+          params.append('lang', activeLanguage.toLowerCase());
+        }
+
         const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
         const targetUrl = `${providerApiBase}/api/provider/resolve?${params.toString()}`;
 
@@ -1414,17 +1418,6 @@ export default function NativeWebPlayer({
         hls.on(Hls.Events.LEVELS_UPDATED, (_event, data) => {
           if (data.levels) {
             setHlsLevels(data.levels);
-          }
-        });
-
-        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
-          setCurrentHlsAudioTrack(data.id);
-        });
-
-        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
-          if (data.audioTracks) {
-            setHlsAudioTracks(data.audioTracks);
-            setCurrentHlsAudioTrack(hls.audioTrack);
           }
         });
 

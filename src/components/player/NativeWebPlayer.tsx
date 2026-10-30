@@ -2970,6 +2970,7 @@ export default function NativeWebPlayer({
                 title="Next Episode"
               >
                 <IoPlaySkipForward size={12} />
+                <span className="hidden sm:inline">Next Episode</span>
               </button>
 
               {/* Next Episode Hover Preview Popover - Desktop (sm+) */}
@@ -3073,7 +3074,6 @@ export default function NativeWebPlayer({
                 <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse ring-2 ring-black" />
               )}
             </div>
-            <span className="hidden sm:inline">Party</span>
             {party.isPartyActive && (
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded-full border border-emerald-500/30">
                 {Math.max(party.partyMembers.length, 1)}

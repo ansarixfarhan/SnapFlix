@@ -125,56 +125,120 @@ export const LANGUAGE_COUNTRY_CODES: Record<string, string> = {
   Urdu: 'pk',
 };
 
-export const getSubtitleCountryCode = (sub: { title: string; language?: string }): string | null => {
-  const lang = (sub.language || '').toLowerCase().trim();
-  if (lang) {
-    if (LANGUAGE_NAMES[lang]) {
-      const fullName = LANGUAGE_NAMES[lang];
-      if (LANGUAGE_COUNTRY_CODES[fullName]) return LANGUAGE_COUNTRY_CODES[fullName];
-    }
-    for (const [name, code] of Object.entries(LANGUAGE_COUNTRY_CODES)) {
-      if (name.toLowerCase() === lang) return code;
-    }
-    if (lang.length === 2) {
-      if (lang === 'en') return 'gb';
-      if (lang === 'ja') return 'jp';
-      if (lang === 'ko') return 'kr';
-      if (lang === 'zh') return 'cn';
-      if (lang === 'hi') return 'in';
-      if (lang === 'es') return 'es';
-      if (lang === 'fr') return 'fr';
-      if (lang === 'de') return 'de';
-      if (lang === 'it') return 'it';
-      if (lang === 'pt') return 'br';
-      if (lang === 'ru') return 'ru';
-      if (lang === 'ar') return 'sa';
-      return lang;
+export interface SubtitleMeta {
+  countryCode: string | null;
+  langCode: string | null;
+}
+
+export const SUBTITLE_LANGUAGE_DEFINITIONS: Array<{
+  matches: string[];
+  langCode: string;
+  countryCode: string;
+}> = [
+  { matches: ['arabic', 'العربية', 'عرب', 'arabi', 'ara'], langCode: 'AR', countryCode: 'sa' },
+  { matches: ['spanish', 'español', 'espanol', 'castellano', 'espana', 'spa'], langCode: 'ES', countryCode: 'es' },
+  { matches: ['french', 'français', 'francais', 'fra', 'fre'], langCode: 'FR', countryCode: 'fr' },
+  { matches: ['indonesian', 'indonesia', 'bahasa indonesia', 'ind'], langCode: 'ID', countryCode: 'id' },
+  { matches: ['malay', 'melayu', 'bahasa melayu', 'may', 'msa'], langCode: 'MS', countryCode: 'my' },
+  { matches: ['portuguese', 'português', 'portugues', 'por'], langCode: 'PT', countryCode: 'br' },
+  { matches: ['hindi', 'हिन्दी', 'hindustani', 'hin'], langCode: 'HI', countryCode: 'in' },
+  { matches: ['german', 'deutsch', 'ger', 'deu'], langCode: 'DE', countryCode: 'de' },
+  { matches: ['italian', 'italiano', 'ita'], langCode: 'IT', countryCode: 'it' },
+  { matches: ['russian', 'русский', 'rus'], langCode: 'RU', countryCode: 'ru' },
+  { matches: ['japanese', '日本語', 'jap', 'jpn'], langCode: 'JA', countryCode: 'jp' },
+  { matches: ['korean', '한국어', 'kor'], langCode: 'KO', countryCode: 'kr' },
+  { matches: ['chinese', '中文', 'mandarin', 'cantonese', 'chi', 'zho'], langCode: 'ZH', countryCode: 'cn' },
+  { matches: ['turkish', 'türkçe', 'turkce', 'tur'], langCode: 'TR', countryCode: 'tr' },
+  { matches: ['vietnamese', 'tiếng việt', 'tieng viet', 'vie'], langCode: 'VI', countryCode: 'vn' },
+  { matches: ['thai', 'ไทย', 'tha'], langCode: 'TH', countryCode: 'th' },
+  { matches: ['dutch', 'nederlands', 'nld', 'dut'], langCode: 'NL', countryCode: 'nl' },
+  { matches: ['polish', 'polski', 'pol'], langCode: 'PL', countryCode: 'pl' },
+  { matches: ['swedish', 'svenska', 'swe'], langCode: 'SV', countryCode: 'se' },
+  { matches: ['norwegian', 'norsk', 'nor'], langCode: 'NO', countryCode: 'no' },
+  { matches: ['danish', 'dansk', 'dan'], langCode: 'DA', countryCode: 'dk' },
+  { matches: ['finnish', 'suomi', 'fin'], langCode: 'FI', countryCode: 'fi' },
+  { matches: ['greek', 'ελληνικά', 'ell', 'gre'], langCode: 'EL', countryCode: 'gr' },
+  { matches: ['hebrew', 'עברית', 'heb'], langCode: 'HE', countryCode: 'il' },
+  { matches: ['czech', 'čeština', 'cestina', 'ces', 'cze'], langCode: 'CS', countryCode: 'cz' },
+  { matches: ['hungarian', 'magyar', 'hun'], langCode: 'HU', countryCode: 'hu' },
+  { matches: ['romanian', 'română', 'romana', 'ron', 'rum'], langCode: 'RO', countryCode: 'ro' },
+  { matches: ['ukrainian', 'українська', 'ukr'], langCode: 'UK', countryCode: 'ua' },
+  { matches: ['tagalog', 'filipino', 'tgl'], langCode: 'TL', countryCode: 'ph' },
+  { matches: ['persian', 'farsi', 'فارسی', 'fas', 'per'], langCode: 'FA', countryCode: 'ir' },
+  { matches: ['bengali', 'bangla', 'বাংলা', 'ben'], langCode: 'BN', countryCode: 'bd' },
+  { matches: ['tamil', 'தமிழ்', 'tam'], langCode: 'TA', countryCode: 'in' },
+  { matches: ['telugu', 'తెలుగు', 'tel'], langCode: 'TE', countryCode: 'in' },
+  { matches: ['kannada', 'ಕನ್ನಡ', 'kan'], langCode: 'KN', countryCode: 'in' },
+  { matches: ['malayalam', 'മലയാളം', 'mal'], langCode: 'ML', countryCode: 'in' },
+  { matches: ['marathi', 'मराठी', 'mar'], langCode: 'MR', countryCode: 'in' },
+  { matches: ['gujarati', 'ગુજરાતી', 'guj'], langCode: 'GU', countryCode: 'in' },
+  { matches: ['urdu', 'اردو', 'urd'], langCode: 'UR', countryCode: 'pk' },
+  { matches: ['english', 'inglés', 'ingles', 'eng'], langCode: 'EN', countryCode: 'gb' },
+];
+
+export const normalizeForLanguageCheck = (str: string): string =>
+  (str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f\u064B-\u065F\u0670]/g, '')
+    .toLowerCase()
+    .trim();
+
+export const getSubtitleMeta = (sub: { title: string; language?: string }): SubtitleMeta => {
+  const normTitle = normalizeForLanguageCheck(sub.title);
+  const rawTitle = (sub.title || '').trim();
+
+  // 1. High Priority: Detect language directly from Title / Label
+  // Fixes issues where upstream provider defaults language to "en" for non-English subtitles
+  if (normTitle) {
+    for (const def of SUBTITLE_LANGUAGE_DEFINITIONS) {
+      for (const match of def.matches) {
+        const normMatch = normalizeForLanguageCheck(match);
+        if (
+          normTitle === normMatch ||
+          normTitle.startsWith(`${normMatch} `) ||
+          normTitle.startsWith(`${normMatch}-`) ||
+          normTitle.startsWith(`${normMatch}_`) ||
+          normTitle.endsWith(` ${normMatch}`) ||
+          normTitle.includes(` ${normMatch} `) ||
+          normTitle.includes(`(${normMatch})`) ||
+          normTitle.includes(`[${normMatch}]`) ||
+          (normMatch.length >= 4 && normTitle.includes(normMatch)) ||
+          rawTitle.includes(match)
+        ) {
+          let country = def.countryCode;
+          if (def.langCode === 'PT' && normTitle.includes('portugal')) country = 'pt';
+          if (def.langCode === 'ES' && (normTitle.includes('latino') || normTitle.includes('latin'))) country = 'mx';
+          if (def.langCode === 'ZH' && (normTitle.includes('taiwan') || normTitle.includes('traditional'))) country = 'tw';
+          return { langCode: def.langCode, countryCode: country };
+        }
+      }
     }
   }
 
-  const titleLower = (sub.title || '').toLowerCase();
-  for (const [name, code] of Object.entries(LANGUAGE_COUNTRY_CODES)) {
-    if (titleLower.includes(name.toLowerCase())) {
-      return code;
+  // 2. Secondary Priority: Check sub.language if title didn't yield a match
+  const cleanLang = (sub.language || '').toLowerCase().trim();
+  if (cleanLang && cleanLang !== 'und' && cleanLang !== 'unknown') {
+    for (const def of SUBTITLE_LANGUAGE_DEFINITIONS) {
+      if (def.langCode.toLowerCase() === cleanLang || def.matches.includes(cleanLang)) {
+        return { langCode: def.langCode, countryCode: def.countryCode };
+      }
+    }
+    if (cleanLang.length === 2) {
+      return { langCode: cleanLang.toUpperCase(), countryCode: cleanLang };
     }
   }
 
-  for (const [code, fullName] of Object.entries(LANGUAGE_NAMES)) {
-    if (
-      titleLower === code ||
-      titleLower.startsWith(`${code} `) ||
-      titleLower.startsWith(`${code}-`) ||
-      titleLower.startsWith(`${code}_`) ||
-      titleLower.endsWith(` ${code}`) ||
-      titleLower.includes(`[${code}]`) ||
-      titleLower.includes(`(${code})`)
-    ) {
-      return LANGUAGE_COUNTRY_CODES[fullName] || null;
-    }
-  }
-
-  return null;
+  // 3. Fallback for custom/unrecognized subtitles: no flag, clean code only if short & recognized
+  return {
+    langCode: cleanLang && cleanLang.length <= 4 && cleanLang !== 'und' && cleanLang !== 'unknown'
+      ? cleanLang.toUpperCase()
+      : null,
+    countryCode: null,
+  };
 };
+
+export const getSubtitleCountryCode = (sub: { title: string; language?: string }): string | null =>
+  getSubtitleMeta(sub).countryCode;
 
 export const GENERIC_AUDIO_LABELS = new Set([
   'audio',
@@ -3053,7 +3117,7 @@ export default function NativeWebPlayer({
                     {/* Subtitle list */}
                     {availableSubtitles.map((sub) => {
                       const isActive = activeSubtitleId === sub.id;
-                      const countryCode = getSubtitleCountryCode(sub);
+                      const { countryCode, langCode } = getSubtitleMeta(sub);
                       return (
                         <button
                           key={sub.id}
@@ -3083,9 +3147,9 @@ export default function NativeWebPlayer({
                             )}
                             <span className="text-[11px] font-medium truncate">{sub.title}</span>
                           </div>
-                          {sub.language && (
+                          {langCode && (
                             <span className="text-[9px] text-gray-400 uppercase ml-1 shrink-0 font-mono">
-                              {sub.language}
+                              {langCode}
                             </span>
                           )}
                         </button>
@@ -3775,7 +3839,7 @@ export default function NativeWebPlayer({
                 {/* Subtitles list */}
                 {availableSubtitles.map((sub) => {
                   const isActive = activeSubtitleId === sub.id;
-                  const countryCode = getSubtitleCountryCode(sub);
+                  const { countryCode, langCode } = getSubtitleMeta(sub);
                   return (
                     <button
                       key={sub.id}
@@ -3806,9 +3870,9 @@ export default function NativeWebPlayer({
                         )}
                         <span className="text-xs font-medium truncate">{sub.title}</span>
                       </div>
-                      {sub.language && (
+                      {langCode && (
                         <span className="text-[10px] text-gray-400 uppercase font-mono ml-2 shrink-0">
-                          {sub.language}
+                          {langCode}
                         </span>
                       )}
                     </button>

@@ -22,6 +22,7 @@ import {
   IoColorPaletteOutline,
   IoChevronForward,
   IoClose,
+  IoPeopleOutline,
 } from 'react-icons/io5';
 import { MdHighQuality, MdReplay10, MdForward10, MdAspectRatio, MdFitScreen } from 'react-icons/md';
 import { Spinner, Button } from '@heroui/react';
@@ -29,6 +30,8 @@ import { syncHistory, getMovieLastPosition, getTvShowLastPosition } from '@/acti
 import { GUEST_HISTORY_KEY, WATCH_HISTORY_QUERY_KEY, readGuestHistory, writeGuestHistory } from '@/hooks/useWatchHistory';
 import { queryClient } from '@/app/providers';
 import useSupabaseUser from '@/hooks/useSupabaseUser';
+import { useWatchParty } from '@/hooks/useWatchParty';
+import WatchPartyModal from './WatchPartyModal';
 import { tmdb } from '@/api/tmdb';
 import { cn } from '@/utils/helpers';
 
@@ -485,6 +488,73 @@ export default function NativeWebPlayer({
   const hasAutoResumedRef = useRef<boolean>(false);
   const lastSavedTimeRef = useRef<number>(0);
   const lastSaveTimestampRef = useRef<number>(0);
+
+  // Watch Party States & Realtime Integration
+  const currentUsername =
+    user?.username ||
+    user?.user_metadata?.full_name ||
+    (user?.email ? user.email.split('@')[0] : 'Farhan');
+
+  const [showPartyModal, setShowPartyModal] = useState(false);
+  const isRemoteActionRef = useRef(false);
+
+  const party = useWatchParty({
+    currentUsername,
+    onRemotePlay: (time, sender) => {
+      if (!videoRef.current) return;
+      isRemoteActionRef.current = true;
+      if (Math.abs(videoRef.current.currentTime - time) > 1.2) {
+        videoRef.current.currentTime = time;
+        setCurrentTime(time);
+      }
+      videoRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    },
+    onRemotePause: (time, sender) => {
+      if (!videoRef.current) return;
+      isRemoteActionRef.current = true;
+      if (Math.abs(videoRef.current.currentTime - time) > 1.2) {
+        videoRef.current.currentTime = time;
+        setCurrentTime(time);
+      }
+      videoRef.current.pause();
+      setIsPlaying(false);
+    },
+    onRemoteSeek: (time, sender) => {
+      if (!videoRef.current) return;
+      isRemoteActionRef.current = true;
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+    },
+    onRemoteSyncRequest: () => {
+      if (!videoRef.current) return;
+      party.broadcastSyncState(videoRef.current.currentTime, !videoRef.current.paused);
+    },
+    onRemoteSyncState: (time, isPlayingRemote) => {
+      if (!videoRef.current) return;
+      isRemoteActionRef.current = true;
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+      if (isPlayingRemote) {
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      } else {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    },
+  });
+
+  // Periodic Drift Sync (Host keeps partner aligned within 1.5s)
+  useEffect(() => {
+    if (!party.isPartyActive || !party.isHost || !isPlaying) return;
+    const interval = setInterval(() => {
+      if (videoRef.current && !videoRef.current.paused) {
+        party.broadcastSyncState(videoRef.current.currentTime, true);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [party.isPartyActive, party.isHost, isPlaying, party.broadcastSyncState]);
 
   // 0. Initial resume time discovery (from prop, URL ?t=, guest localStorage, or Supabase)
   useEffect(() => {
@@ -2185,6 +2255,10 @@ export default function NativeWebPlayer({
           setIsPlaying(true);
           setHasStartedPlayback(true);
           setIsBuffering(false);
+          if (!isRemoteActionRef.current && party.isPartyActive) {
+            party.broadcastPlay(videoRef.current?.currentTime || 0);
+          }
+          isRemoteActionRef.current = false;
         }}
         onPlaying={() => {
           setIsBuffering(false);
@@ -2195,6 +2269,10 @@ export default function NativeWebPlayer({
           setIsBuffering(false);
           setIsPlaying(false);
           saveWatchProgress();
+          if (!isRemoteActionRef.current && party.isPartyActive) {
+            party.broadcastPause(videoRef.current?.currentTime || 0);
+          }
+          isRemoteActionRef.current = false;
         }}
         onWaiting={() => {
           if (!videoRef.current?.paused) {
@@ -2206,6 +2284,10 @@ export default function NativeWebPlayer({
         }}
         onSeeked={() => {
           setIsBuffering(false);
+          if (!isRemoteActionRef.current && party.isPartyActive) {
+            party.broadcastSeek(videoRef.current?.currentTime || 0);
+          }
+          isRemoteActionRef.current = false;
         }}
         onLoadedData={() => {
           setIsBuffering(false);
@@ -2583,6 +2665,25 @@ export default function NativeWebPlayer({
         </div>
       )}
 
+      {/* 5.4 Watch Party HUD Toast */}
+      {party.partyToast && (
+        <div className="absolute top-14 sm:top-16 left-1/2 -translate-x-1/2 z-40 pointer-events-none flex items-center gap-2 bg-[#121216]/90 backdrop-blur-md px-4 py-1.5 sm:px-5 sm:py-2 rounded-full border border-white/20 text-white text-xs sm:text-sm font-semibold shadow-2xl animate-in fade-in slide-in-from-top-3 duration-200">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>{party.partyToast}</span>
+        </div>
+      )}
+
+      {/* 5.5 Watch Party Floating Reaction Bubbles */}
+      {party.floatingReactions.map((r) => (
+        <div
+          key={r.id}
+          style={{ left: `${r.x}%` }}
+          className="pointer-events-none absolute bottom-24 z-40 text-4xl sm:text-5xl select-none party-float-emoji"
+        >
+          {r.emoji}
+        </div>
+      ))}
+
       {/* 6. Top Bar (Title & Episode on Left | Quality, CC Audio & Subtitles, Next Episode on Right) */}
       <div
         className={`absolute top-0 inset-x-0 px-3 sm:px-6 pt-2.5 sm:pt-4 pb-4 sm:pb-6 bg-gradient-to-b from-black/90 via-black/40 to-transparent flex items-center justify-between z-30 transition-opacity duration-300 ${
@@ -2881,6 +2982,35 @@ export default function NativeWebPlayer({
               )}
             </div>
           )}
+
+          {/* Watch Party Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowPartyModal(true);
+            }}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full border text-xs font-semibold transition cursor-pointer backdrop-blur-md active:scale-95 shadow-md shrink-0 pointer-events-auto",
+              party.isPartyActive
+                ? "bg-red-600/25 border-red-500/50 text-white shadow-red-900/30"
+                : "bg-black/40 hover:bg-black/60 border-white/15 text-white/90 hover:text-white"
+            )}
+            title={party.isPartyActive ? `Watch Party (${party.partyRoomId})` : "Start Watch Party"}
+          >
+            <div className="relative flex items-center justify-center">
+              <IoPeopleOutline size={15} className={party.isPartyActive ? "text-[#E50914]" : "text-white/80"} />
+              {party.isPartyActive && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse ring-2 ring-black" />
+              )}
+            </div>
+            <span className="hidden sm:inline">Party</span>
+            {party.isPartyActive && (
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded-full border border-emerald-500/30">
+                {Math.max(party.partyMembers.length, 1)}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -3359,13 +3489,42 @@ export default function NativeWebPlayer({
         </div>
       )}
 
-      {/* Global CSS for native video subtitle cue styling */}
+      {/* 9. Watch Party Modal */}
+      <WatchPartyModal
+        isOpen={showPartyModal}
+        onClose={() => setShowPartyModal(false)}
+        party={party}
+      />
+
+      {/* Global CSS for native video subtitle cue styling & party reactions */}
       <style jsx global>{`
         ::cue {
           font-size: ${subFontSize === 'small' ? '14px' : subFontSize === 'large' ? '22px' : '18px'} !important;
           color: ${subColor === 'yellow' ? '#fde047' : '#ffffff'} !important;
           background-color: ${subBg === 'transparent' ? 'transparent' : 'rgba(0, 0, 0, 0.75)'} !important;
           text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9) !important;
+        }
+
+        @keyframes partyFloatUp {
+          0% {
+            transform: translateY(0) scale(0.6);
+            opacity: 0;
+          }
+          15% {
+            transform: translateY(-30px) scale(1.4);
+            opacity: 1;
+          }
+          80% {
+            transform: translateY(-160px) scale(1.1);
+            opacity: 0.9;
+          }
+          100% {
+            transform: translateY(-220px) scale(0.8);
+            opacity: 0;
+          }
+        }
+        .party-float-emoji {
+          animation: partyFloatUp 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
         }
       `}</style>
     </div>

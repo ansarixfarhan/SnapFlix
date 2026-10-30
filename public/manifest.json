@@ -10,6 +10,30 @@
   "lang": "en-US",
   "icons": [
     {
+      "src": "/snapflix.png",
+      "sizes": "836x836",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/snapflix.png",
+      "sizes": "836x836",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/android/android-launchericon-512-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/android/android-launchericon-192-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
       "type": "image/png",
       "src": "icons/windows/SmallTile.scale-100.png",
       "sizes": "71x71"
@@ -408,16 +432,6 @@
       "type": "image/png",
       "src": "icons/windows/Square44x44Logo.altform-lightunplated_targetsize-256.png",
       "sizes": "256x256"
-    },
-    {
-      "type": "image/png",
-      "src": "icons/android/android-launchericon-512-512.png",
-      "sizes": "512x512"
-    },
-    {
-      "type": "image/png",
-      "src": "icons/android/android-launchericon-192-192.png",
-      "sizes": "192x192"
     },
     {
       "type": "image/png",

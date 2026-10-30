@@ -433,6 +433,7 @@ export default function NativeWebPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showAudioDrawer, setShowAudioDrawer] = useState(false);
+  const [mobileAudioSubTab, setMobileAudioSubTab] = useState<'audio' | 'subtitles'>('audio');
   const [showEpisodesTray, setShowEpisodesTray] = useState(false);
   const [autoPlayNext, setAutoPlayNext] = useState(true);
   const [selectedEpisodeChunk, setSelectedEpisodeChunk] = useState(0);
@@ -2877,74 +2878,148 @@ export default function NativeWebPlayer({
                 triggerControls();
               }}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-xs font-semibold text-white/90 hover:text-white transition cursor-pointer backdrop-blur-md active:scale-95 shadow-md shrink-0 pointer-events-auto"
-              title="Change Audio Track"
+              title="Audio & Subtitles"
             >
               <IoLanguageOutline size={15} className="text-white/80" />
-              <span className="hidden sm:inline">Audio</span>
-              <span className="hidden sm:inline text-gray-300 font-normal truncate max-w-[80px]">
-                {activeLanguage || 'Default'}
-              </span>
+              <span className="hidden sm:inline">Audio & Subs</span>
             </button>
 
-            {/* Netflix-style Single-Column Audio Popover Window - Desktop (sm+) */}
+            {/* Netflix-style 2-Column Audio & Subtitles Popover Window - Desktop (sm+) */}
             {showAudioDrawer && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="hidden sm:flex absolute top-full right-0 mt-2.5 w-56 sm:w-60 bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-2 z-50 flex-col overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
+                className="hidden sm:flex absolute top-full right-0 mt-2.5 w-[500px] md:w-[540px] bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_50px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-3.5 z-50 flex-row overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
               >
-                <div className="px-3 py-2 text-[10.5px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
-                  <span>Audio Track</span>
+                {/* Left Column: Audio Languages */}
+                <div className="flex-1 flex flex-col min-w-0 pr-3">
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1.5 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
+                    <span>Audio</span>
+                  </div>
+
+                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-0.5 p-0.5 pr-1">
+                    {availableLanguages.map((item) => {
+                      const isActive = activeLanguage === item.name;
+                      const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
+                      return (
+                        <button
+                          key={item.name}
+                          type="button"
+                          onClick={() => {
+                            handleSelectLanguage(item.name);
+                          }}
+                          className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${isActive
+                            ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
+                            : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-3.5 text-center shrink-0">
+                              {isActive && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
+                            </span>
+                            {countryCode ? (
+                              <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                                <img
+                                  src={`https://flagcdn.com/w40/${countryCode}.png`}
+                                  srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                                  width="20"
+                                  height="14"
+                                  alt={`${item.name} flag`}
+                                  className="w-full h-full object-cover select-none"
+                                  loading="lazy"
+                                />
+                              </span>
+                            ) : (
+                              <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
+                                {LANGUAGE_FLAGS[item.name] || '🌐'}
+                              </span>
+                            )}
+                            <div className="truncate">
+                              <span className="text-[11px] block font-medium truncate">{item.name}</span>
+                              <span className="text-[9px] text-gray-400 block truncate leading-none">
+                                {item.name === originalLanguage ? 'Original Audio' : `${item.count} sources`}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="max-h-[min(280px,calc(100vh-140px))] overflow-y-auto space-y-0.5 p-0.5">
-                  {/* Spoken Languages List */}
-                  {availableLanguages.map((item) => {
-                    const isActive = activeLanguage === item.name;
-                    const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
-                    return (
-                      <button
-                        key={item.name}
-                        onClick={() => {
-                          handleSelectLanguage(item.name);
-                          setShowAudioDrawer(false);
-                        }}
-                        className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${isActive
-                          ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
-                          : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                          }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="w-3.5 text-center shrink-0">
-                            {isActive && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
-                          </span>
-                          {countryCode ? (
-                            <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
-                              <img
-                                src={`https://flagcdn.com/w40/${countryCode}.png`}
-                                srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
-                                width="20"
-                                height="14"
-                                alt={`${item.name} flag`}
-                                className="w-full h-full object-cover select-none"
-                                loading="lazy"
-                              />
+                {/* Vertical Partition / Divider */}
+                <div className="w-[1px] bg-white/10 self-stretch my-1 shrink-0" />
+
+                {/* Right Column: Subtitles / Captions */}
+                <div className="flex-1 flex flex-col min-w-0 pl-3">
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center justify-between mb-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
+                      <span>Subtitles</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[10px] text-zinc-400 hover:text-white flex items-center gap-1 hover:underline cursor-pointer"
+                      title="Upload custom subtitle file (.srt, .vtt)"
+                    >
+                      <IoCloudUploadOutline size={12} />
+                      <span>Upload</span>
+                    </button>
+                  </div>
+
+                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-0.5 p-0.5 pr-1">
+                    {/* Off Option */}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSubtitle('off')}
+                      className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${activeSubtitleId === 'off'
+                        ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
+                        : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+                        }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-3.5 text-center shrink-0">
+                          {activeSubtitleId === 'off' && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
+                        </span>
+                        <span className="text-[11px] font-medium">Off</span>
+                      </div>
+                    </button>
+
+                    {/* Subtitle list */}
+                    {availableSubtitles.map((sub) => {
+                      const isActive = activeSubtitleId === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => handleSelectSubtitle(sub.id)}
+                          className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${isActive
+                            ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
+                            : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-3.5 text-center shrink-0">
+                              {isActive && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
                             </span>
-                          ) : (
-                            <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
-                              {LANGUAGE_FLAGS[item.name] || '🌐'}
+                            <span className="text-[11px] font-medium truncate">{sub.title}</span>
+                          </div>
+                          {sub.language && (
+                            <span className="text-[9px] text-gray-400 uppercase ml-1 shrink-0 font-mono">
+                              {sub.language}
                             </span>
                           )}
-                          <div className="truncate">
-                            <span className="text-[11px] block font-medium truncate">{item.name}</span>
-                            <span className="text-[9px] text-gray-400 block truncate leading-none">
-                              {item.name === originalLanguage ? 'Original Audio' : `${item.count} sources`}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })}
+
+                    {availableSubtitles.length === 0 && (
+                      <div className="text-[11px] text-gray-500 italic px-2 py-4 text-center">
+                        No subtitles provided by server
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -3466,7 +3541,16 @@ export default function NativeWebPlayer({
         </div>
       )}
 
-      {/* 10. Mobile Responsive Bottom Sheet for Audio Track (Active on screens < sm) */}
+      {/* Hidden file input for custom subtitle upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".srt,.vtt"
+        onChange={handleUploadSubtitle}
+        className="hidden"
+      />
+
+      {/* 10. Mobile Responsive Bottom Sheet for Audio & Subtitles (Active on screens < sm) */}
       {showAudioDrawer && (
         <div
           ref={mobileAudioRef}
@@ -3484,76 +3568,168 @@ export default function NativeWebPlayer({
             {/* Top Drag Pill */}
             <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-2 shrink-0" />
 
-            {/* Header Row */}
-            <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-white/10 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="w-2 h-2 rounded-full bg-[#E50914] shadow-[0_0_8px_#E50914] shrink-0" />
-                <span className="text-xs font-bold text-white uppercase tracking-wider">Audio Track</span>
-                <span className="text-[10px] text-gray-400 font-normal truncate">
-                  ({activeLanguage || 'Default'})
-                </span>
+            {/* Header Row with Tabs: Audio vs Subtitles */}
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-1 p-0.5 bg-white/10 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setMobileAudioSubTab('audio')}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer",
+                    mobileAudioSubTab === 'audio'
+                      ? "bg-[#E50914] text-white shadow-sm"
+                      : "text-gray-400 hover:text-white"
+                  )}
+                >
+                  Audio ({activeLanguage || 'Default'})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileAudioSubTab('subtitles')}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer",
+                    mobileAudioSubTab === 'subtitles'
+                      ? "bg-[#E50914] text-white shadow-sm"
+                      : "text-gray-400 hover:text-white"
+                  )}
+                >
+                  Subtitles ({activeSubtitleId === 'off' ? 'Off' : 'On'})
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowAudioDrawer(false)}
-                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0 ml-2"
-                aria-label="Close"
-              >
-                <IoClose size={15} />
-              </button>
+
+              <div className="flex items-center gap-2">
+                {mobileAudioSubTab === 'subtitles' && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-[11px] text-zinc-300 hover:text-white flex items-center gap-1 px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 cursor-pointer"
+                    title="Upload Subtitle"
+                  >
+                    <IoCloudUploadOutline size={13} />
+                    <span>Upload</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAudioDrawer(false)}
+                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
+                  aria-label="Close"
+                >
+                  <IoClose size={16} />
+                </button>
+              </div>
             </div>
 
-            {/* Scrollable Audio Languages List */}
-            <div className="overflow-y-auto space-y-1 pr-0.5 max-h-[140px] sm:max-h-[180px]">
-              {availableLanguages.map((item) => {
-                const isActive = activeLanguage === item.name;
-                const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
-                return (
-                  <button
-                    key={item.name}
-                    type="button"
-                    onClick={() => {
-                      handleSelectLanguage(item.name);
-                      setShowAudioDrawer(false);
-                    }}
-                    className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                      isActive
-                        ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                        : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-4 text-center shrink-0">
-                        {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                      </span>
-                      {countryCode ? (
-                        <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
-                          <img
-                            src={`https://flagcdn.com/w40/${countryCode}.png`}
-                            srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
-                            width="20"
-                            height="14"
-                            alt={`${item.name} flag`}
-                            className="w-full h-full object-cover select-none"
-                            loading="lazy"
-                          />
+            {/* Tab 1: Scrollable Audio Languages List */}
+            {mobileAudioSubTab === 'audio' && (
+              <div className="overflow-y-auto space-y-1 pr-0.5 max-h-[220px]">
+                {availableLanguages.map((item) => {
+                  const isActive = activeLanguage === item.name;
+                  const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
+                  return (
+                    <button
+                      key={item.name}
+                      type="button"
+                      onClick={() => {
+                        handleSelectLanguage(item.name);
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                        isActive
+                          ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                          : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-4 text-center shrink-0">
+                          {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
                         </span>
-                      ) : (
-                        <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
-                          {LANGUAGE_FLAGS[item.name] || '🌐'}
+                        {countryCode ? (
+                          <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                            <img
+                              src={`https://flagcdn.com/w40/${countryCode}.png`}
+                              srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                              width="20"
+                              height="14"
+                              alt={`${item.name} flag`}
+                              className="w-full h-full object-cover select-none"
+                              loading="lazy"
+                            />
+                          </span>
+                        ) : (
+                          <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
+                            {LANGUAGE_FLAGS[item.name] || '🌐'}
+                          </span>
+                        )}
+                        <div className="truncate min-w-0">
+                          <span className="text-xs block font-medium truncate">{item.name}</span>
+                          <span className="text-[9px] text-gray-400 block truncate leading-none">
+                            {item.name === originalLanguage ? 'Original Audio' : `${item.count} sources`}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Tab 2: Scrollable Subtitles List */}
+            {mobileAudioSubTab === 'subtitles' && (
+              <div className="overflow-y-auto space-y-1 pr-0.5 max-h-[220px]">
+                {/* Off Option */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectSubtitle('off')}
+                  className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                    activeSubtitleId === 'off'
+                      ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                      : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="w-4 text-center shrink-0">
+                      {activeSubtitleId === 'off' && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                    </span>
+                    <span className="text-xs font-medium">Off</span>
+                  </div>
+                </button>
+
+                {/* Subtitles list */}
+                {availableSubtitles.map((sub) => {
+                  const isActive = activeSubtitleId === sub.id;
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => handleSelectSubtitle(sub.id)}
+                      className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                        isActive
+                          ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                          : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-4 text-center shrink-0">
+                          {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                        </span>
+                        <span className="text-xs font-medium truncate">{sub.title}</span>
+                      </div>
+                      {sub.language && (
+                        <span className="text-[10px] text-gray-400 uppercase font-mono ml-2 shrink-0">
+                          {sub.language}
                         </span>
                       )}
-                      <div className="truncate min-w-0">
-                        <span className="text-xs block font-medium truncate">{item.name}</span>
-                        <span className="text-[9px] text-gray-400 block truncate leading-none">
-                          {item.name === originalLanguage ? 'Original Audio' : `${item.count} sources`}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+
+                {availableSubtitles.length === 0 && (
+                  <div className="text-xs text-gray-400 italic py-6 text-center">
+                    No subtitles available for this stream
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -110,6 +110,70 @@ export const LANGUAGE_COUNTRY_CODES: Record<string, string> = {
   Polish: 'pl',
   Thai: 'th',
   Vietnamese: 'vn',
+  Swedish: 'se',
+  Norwegian: 'no',
+  Danish: 'dk',
+  Finnish: 'fi',
+  Greek: 'gr',
+  Hebrew: 'il',
+  Czech: 'cz',
+  Hungarian: 'hu',
+  Romanian: 'ro',
+  Ukrainian: 'ua',
+  Marathi: 'in',
+  Gujarati: 'in',
+  Urdu: 'pk',
+};
+
+export const getSubtitleCountryCode = (sub: { title: string; language?: string }): string | null => {
+  const lang = (sub.language || '').toLowerCase().trim();
+  if (lang) {
+    if (LANGUAGE_NAMES[lang]) {
+      const fullName = LANGUAGE_NAMES[lang];
+      if (LANGUAGE_COUNTRY_CODES[fullName]) return LANGUAGE_COUNTRY_CODES[fullName];
+    }
+    for (const [name, code] of Object.entries(LANGUAGE_COUNTRY_CODES)) {
+      if (name.toLowerCase() === lang) return code;
+    }
+    if (lang.length === 2) {
+      if (lang === 'en') return 'gb';
+      if (lang === 'ja') return 'jp';
+      if (lang === 'ko') return 'kr';
+      if (lang === 'zh') return 'cn';
+      if (lang === 'hi') return 'in';
+      if (lang === 'es') return 'es';
+      if (lang === 'fr') return 'fr';
+      if (lang === 'de') return 'de';
+      if (lang === 'it') return 'it';
+      if (lang === 'pt') return 'br';
+      if (lang === 'ru') return 'ru';
+      if (lang === 'ar') return 'sa';
+      return lang;
+    }
+  }
+
+  const titleLower = (sub.title || '').toLowerCase();
+  for (const [name, code] of Object.entries(LANGUAGE_COUNTRY_CODES)) {
+    if (titleLower.includes(name.toLowerCase())) {
+      return code;
+    }
+  }
+
+  for (const [code, fullName] of Object.entries(LANGUAGE_NAMES)) {
+    if (
+      titleLower === code ||
+      titleLower.startsWith(`${code} `) ||
+      titleLower.startsWith(`${code}-`) ||
+      titleLower.startsWith(`${code}_`) ||
+      titleLower.endsWith(` ${code}`) ||
+      titleLower.includes(`[${code}]`) ||
+      titleLower.includes(`(${code})`)
+    ) {
+      return LANGUAGE_COUNTRY_CODES[fullName] || null;
+    }
+  }
+
+  return null;
 };
 
 export const GENERIC_AUDIO_LABELS = new Set([
@@ -2982,6 +3046,9 @@ export default function NativeWebPlayer({
                         <span className="w-3.5 text-center shrink-0">
                           {activeSubtitleId === 'off' && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
                         </span>
+                        <span className="w-5 h-3.5 rounded-[3px] shrink-0 inline-flex items-center justify-center text-[10px] font-bold text-gray-400 bg-white/10 border border-white/10">
+                          ✕
+                        </span>
                         <span className="text-[11px] font-medium">Off</span>
                       </div>
                     </button>
@@ -2989,6 +3056,7 @@ export default function NativeWebPlayer({
                     {/* Subtitle list */}
                     {availableSubtitles.map((sub) => {
                       const isActive = activeSubtitleId === sub.id;
+                      const countryCode = getSubtitleCountryCode(sub);
                       return (
                         <button
                           key={sub.id}
@@ -3003,6 +3071,23 @@ export default function NativeWebPlayer({
                             <span className="w-3.5 text-center shrink-0">
                               {isActive && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
                             </span>
+                            {countryCode ? (
+                              <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                                <img
+                                  src={`https://flagcdn.com/w40/${countryCode}.png`}
+                                  srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                                  width="20"
+                                  height="14"
+                                  alt="sub flag"
+                                  className="w-full h-full object-cover select-none"
+                                  loading="lazy"
+                                />
+                              </span>
+                            ) : (
+                              <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
+                                💬
+                              </span>
+                            )}
                             <span className="text-[11px] font-medium truncate">{sub.title}</span>
                           </div>
                           {sub.language && (
@@ -3690,6 +3775,9 @@ export default function NativeWebPlayer({
                     <span className="w-4 text-center shrink-0">
                       {activeSubtitleId === 'off' && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
                     </span>
+                    <span className="w-5 h-3.5 rounded-[3px] shrink-0 inline-flex items-center justify-center text-[10px] font-bold text-gray-400 bg-white/10 border border-white/10">
+                      ✕
+                    </span>
                     <span className="text-xs font-medium">Off</span>
                   </div>
                 </button>
@@ -3697,6 +3785,7 @@ export default function NativeWebPlayer({
                 {/* Subtitles list */}
                 {availableSubtitles.map((sub) => {
                   const isActive = activeSubtitleId === sub.id;
+                  const countryCode = getSubtitleCountryCode(sub);
                   return (
                     <button
                       key={sub.id}
@@ -3712,6 +3801,23 @@ export default function NativeWebPlayer({
                         <span className="w-4 text-center shrink-0">
                           {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
                         </span>
+                        {countryCode ? (
+                          <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                            <img
+                              src={`https://flagcdn.com/w40/${countryCode}.png`}
+                              srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                              width="20"
+                              height="14"
+                              alt="sub flag"
+                              className="w-full h-full object-cover select-none"
+                              loading="lazy"
+                            />
+                          </span>
+                        ) : (
+                          <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
+                            💬
+                          </span>
+                        )}
                         <span className="text-xs font-medium truncate">{sub.title}</span>
                       </div>
                       {sub.language && (

@@ -23,7 +23,7 @@ import {
   IoChevronForward,
   IoClose,
 } from 'react-icons/io5';
-import { MdHighQuality, MdReplay10, MdForward10 } from 'react-icons/md';
+import { MdHighQuality, MdReplay10, MdForward10, MdAspectRatio, MdFitScreen } from 'react-icons/md';
 import { Spinner, Button } from '@heroui/react';
 import { syncHistory, getMovieLastPosition, getTvShowLastPosition } from '@/actions/histories';
 import { GUEST_HISTORY_KEY, WATCH_HISTORY_QUERY_KEY, readGuestHistory, writeGuestHistory } from '@/hooks/useWatchHistory';
@@ -81,8 +81,53 @@ export const LANGUAGE_NAMES: Record<string, string> = {
   tr: 'Turkish',
 };
 
+export const LANGUAGE_COUNTRY_CODES: Record<string, string> = {
+  English: 'gb',
+  Hindi: 'in',
+  Japanese: 'jp',
+  Korean: 'kr',
+  Spanish: 'es',
+  French: 'fr',
+  German: 'de',
+  Italian: 'it',
+  Tamil: 'in',
+  Telugu: 'in',
+  Malayalam: 'in',
+  Kannada: 'in',
+  Bengali: 'in',
+  Punjabi: 'in',
+  Chinese: 'cn',
+  Russian: 'ru',
+  Arabic: 'sa',
+  Turkish: 'tr',
+  Portuguese: 'br',
+  Indonesian: 'id',
+  Tagalog: 'ph',
+  Dutch: 'nl',
+  Polish: 'pl',
+  Thai: 'th',
+  Vietnamese: 'vn',
+};
+
+export const GENERIC_AUDIO_LABELS = new Set([
+  'audio',
+  'default',
+  'main',
+  'stereo',
+  'surround',
+  'und',
+  'undefined',
+  'unknown',
+  'track',
+  'media',
+  'aac',
+  'sound',
+  'auto',
+  'none',
+]);
+
 export const LANGUAGE_FLAGS: Record<string, string> = {
-  English: '🇺🇸',
+  English: '🇬🇧',
   Hindi: '🇮🇳',
   Japanese: '🇯🇵',
   Korean: '🇰🇷',
@@ -102,11 +147,12 @@ export const LANGUAGE_FLAGS: Record<string, string> = {
   Turkish: '🇹🇷',
   Portuguese: '🇧🇷',
   Indonesian: '🇮🇩',
+  Tagalog: '🇵🇭',
   Dutch: '🇳🇱',
   Polish: '🇵🇱',
   Thai: '🇹🇭',
   Vietnamese: '🇻🇳',
-  Original: '🇺🇸',
+  Original: '🌐',
 };
 
 export const LANG_CODE_ALIASES: Record<string, string[]> = {
@@ -120,22 +166,43 @@ export const LANG_CODE_ALIASES: Record<string, string[]> = {
   Kannada: ['kn', 'kan', 'kannada'],
   Japanese: ['ja', 'jpn', 'japanese'],
   Korean: ['ko', 'kor', 'korean'],
-  Spanish: ['es', 'spa', 'spanish'],
+  Spanish: ['es', 'spa', 'spanish', 'esla', 'es-la', 'es_la', 'es419', 'es-419', 'latino', 'castellano', 'espanol', 'español'],
   French: ['fr', 'fra', 'fre', 'french'],
   German: ['de', 'ger', 'deu', 'german'],
   Italian: ['it', 'ita', 'italian'],
   Russian: ['ru', 'rus', 'russian'],
-  Arabic: ['ar', 'ara', 'arabic'],
-  Portuguese: ['pt', 'por', 'portuguese'],
+  Arabic: ['ar', 'ara', 'arabic', 'ar-sa', 'arsa'],
+  Portuguese: ['pt', 'por', 'portuguese', 'ptbr', 'pt-br', 'pt_br', 'brazil', 'brasil'],
   Turkish: ['tr', 'tur', 'turkish'],
-  Chinese: ['zh', 'chi', 'zho', 'chinese'],
+  Chinese: ['zh', 'chi', 'zho', 'chinese', 'mandarin', 'cantonese'],
+  Indonesian: ['id', 'ind', 'indonesian'],
+  Tagalog: ['tl', 'tgl', 'tagalog', 'filipino', 'fil'],
+  Thai: ['th', 'tha', 'thai'],
+  Vietnamese: ['vi', 'vie', 'vietnamese'],
+  Dutch: ['nl', 'nld', 'dut', 'dutch'],
+  Polish: ['pl', 'pol', 'polish'],
 };
 
 export function parseWordToLanguage(word: string): string | null {
   const s = word.toLowerCase().trim();
   if (!s) return null;
+
+  const clean = s.replace(/[^a-z0-9]/g, '');
+  if (clean.startsWith('esla') || clean.startsWith('es419') || clean.startsWith('espa') || clean === 'esla') return 'Spanish';
+  if (clean.startsWith('ptbr') || clean.startsWith('ptpt')) return 'Portuguese';
+  if (clean.startsWith('enus') || clean.startsWith('engb')) return 'English';
+  if (clean.startsWith('frfr')) return 'French';
+  if (clean.startsWith('dede')) return 'German';
+  if (clean.startsWith('itit')) return 'Italian';
+  if (clean.startsWith('jajp') || clean.startsWith('jpn')) return 'Japanese';
+  if (clean.startsWith('kokr') || clean.startsWith('kor')) return 'Korean';
+  if (clean.startsWith('ruru') || clean.startsWith('rus')) return 'Russian';
+  if (clean.startsWith('arsa') || clean.startsWith('ara')) return 'Arabic';
+
   for (const [lang, aliases] of Object.entries(LANG_CODE_ALIASES)) {
     const matched = aliases.some((a) => {
+      const aClean = a.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (s === a || clean === aClean) return true;
       if (a.length <= 3) {
         return new RegExp(`\\b${a}\\b`, 'i').test(s) || s === a;
       }
@@ -189,10 +256,19 @@ export function getStreamAudioLanguages(
       langs.add(defaultLang);
       return Array.from(langs);
     }
-    const splitParts = raw.split(/[,/+|]/);
+    const cleanRaw = raw.replace(/\s*\(subtitles?\)/i, '').replace(/\s*sub$/i, '').trim();
+    const splitParts = cleanRaw.split(/[,/+|]/);
     for (const part of splitParts) {
       const parsed = parseWordToLanguage(part.trim());
-      if (parsed) langs.add(parsed);
+      if (parsed) {
+        langs.add(parsed);
+      } else if (part.trim().length > 1) {
+        const lower = part.trim().toLowerCase();
+        if (!GENERIC_AUDIO_LABELS.has(lower) && !lower.startsWith('audio') && !lower.startsWith('track')) {
+          const titleCased = part.trim().charAt(0).toUpperCase() + part.trim().slice(1).toLowerCase();
+          langs.add(titleCased);
+        }
+      }
     }
     if (langs.size > 0 && !sLower.includes('dual') && !sLower.includes('multi')) {
       return Array.from(langs);
@@ -360,6 +436,36 @@ export default function NativeWebPlayer({
   const activeEpisodeRef = useRef<HTMLDivElement | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+
+  // Aspect Ratio / Screen Fit Mode ('contain' = Fit, 'cover' = Zoom to Fill, 'fill' = Stretch)
+  const [fitMode, setFitMode] = useState<'contain' | 'cover' | 'fill'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('snapflix_player_fit');
+      if (saved === 'contain' || saved === 'cover' || saved === 'fill') return saved;
+    }
+    return 'contain';
+  });
+  const [fitToast, setFitToast] = useState<string | null>(null);
+  const fitToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const cycleFitMode = useCallback(() => {
+    setFitMode((prev) => {
+      const next = prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain';
+      const label =
+        next === 'cover'
+          ? 'Zoom to Fill (Best Fit)'
+          : next === 'fill'
+          ? 'Stretch to Fit'
+          : 'Original (Fit to Screen)';
+      setFitToast(label);
+      if (fitToastTimeoutRef.current) clearTimeout(fitToastTimeoutRef.current);
+      fitToastTimeoutRef.current = setTimeout(() => setFitToast(null), 1600);
+      try {
+        localStorage.setItem('snapflix_player_fit', next);
+      } catch {}
+      return next;
+    });
+  }, []);
 
   // Backdrop & Overview for Netflix-Style Pause Overlay
   const [fetchedBackdrop, setFetchedBackdrop] = useState<string | null>(null);
@@ -666,6 +772,7 @@ export default function NativeWebPlayer({
   const [hlsLevels, setHlsLevels] = useState<any[]>([]);
   const [currentHlsLevel, setCurrentHlsLevel] = useState<number>(-1);
   const qualityMenuRef = useRef<HTMLDivElement>(null);
+  const mobileQualityRef = useRef<HTMLDivElement>(null);
   const qualityMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Helper to detect touch devices
@@ -695,7 +802,10 @@ export default function NativeWebPlayer({
   // Close quality menu on click outside (support both touch and mouse with pointerdown)
   useEffect(() => {
     const handleClickOutside = (e: Event) => {
-      if (qualityMenuRef.current && !qualityMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideDesktop = qualityMenuRef.current?.contains(target);
+      const insideMobile = mobileQualityRef.current?.contains(target);
+      if (!insideDesktop && !insideMobile) {
         setShowQualityMenu(false);
       }
     };
@@ -707,6 +817,7 @@ export default function NativeWebPlayer({
 
   // Audio Dropdown Popover Ref & Handlers
   const audioMenuRef = useRef<HTMLDivElement>(null);
+  const mobileAudioRef = useRef<HTMLDivElement>(null);
   const audioMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleAudioMouseEnter = () => {
@@ -731,7 +842,10 @@ export default function NativeWebPlayer({
   // Close audio menu on click outside
   useEffect(() => {
     const handleClickOutside = (e: Event) => {
-      if (audioMenuRef.current && !audioMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideDesktop = audioMenuRef.current?.contains(target);
+      const insideMobile = mobileAudioRef.current?.contains(target);
+      if (!insideDesktop && !insideMobile) {
         setShowAudioDrawer(false);
       }
     };
@@ -798,12 +912,21 @@ export default function NativeWebPlayer({
       });
     });
 
-    // Also include live HLS internal audio tracks if available
+    // Also include live HLS internal audio tracks if available (only if they represent real languages)
     if (hlsAudioTracks.length > 0) {
       hlsAudioTracks.forEach((track) => {
-        const langName = parseWordToLanguage(track.name || track.lang || '');
-        if (langName && !counts.has(langName)) {
-          counts.set(langName, 1);
+        const rawName = (track.name || track.lang || '').trim();
+        const parsed = parseWordToLanguage(rawName);
+        if (parsed && !counts.has(parsed)) {
+          counts.set(parsed, 1);
+        } else if (!parsed && rawName.length > 1) {
+          const lower = rawName.toLowerCase();
+          if (!GENERIC_AUDIO_LABELS.has(lower) && !lower.startsWith('audio') && !lower.startsWith('track')) {
+            const titleCased = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
+            if (!counts.has(titleCased)) {
+              counts.set(titleCased, 1);
+            }
+          }
         }
       });
     }
@@ -833,7 +956,11 @@ export default function NativeWebPlayer({
       const trackIdx = hlsRef.current.audioTracks.findIndex((t: any) => {
         const tLang = (t.lang || '').toLowerCase();
         const tName = (t.name || '').toLowerCase();
-        return aliases.some((a) => tLang === a || tName.includes(a));
+        return (
+          tName === targetLang.toLowerCase() ||
+          tLang === targetLang.toLowerCase() ||
+          aliases.some((a) => tLang === a || tName.includes(a))
+        );
       });
       if (trackIdx !== -1) {
         hlsRef.current.audioTrack = trackIdx;
@@ -1374,6 +1501,11 @@ export default function NativeWebPlayer({
 
   // 2. Playable URL with Proxy rewrite
   const getPlayableUrl = useCallback((stream: StreamItem) => {
+    // If stream is already proxied through our edge gateway or backend proxy, do not double proxy
+    if (stream.link.includes('proxy-stream') || stream.link.includes('/api/proxy')) {
+      return stream.link;
+    }
+
     const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
 
     // Streams with custom request headers (e.g. Referer or Origin like Movy/Phoenix) MUST be routed through
@@ -1529,7 +1661,7 @@ export default function NativeWebPlayer({
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 // If direct stream failed, attempt proxy fallback once
-                if (hls.url && !hls.url.includes('proxy-stream')) {
+                if (hls.url && !hls.url.includes('proxy-stream') && !hls.url.includes('/api/proxy')) {
                   const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
                   const proxyUrl = `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
@@ -1870,8 +2002,8 @@ export default function NativeWebPlayer({
     }
   };
 
-  // Toggle Fullscreen with cross-browser support
-  const toggleFullscreen = () => {
+  // Toggle Fullscreen with auto-lock to Landscape on mobile devices
+  const toggleFullscreen = async () => {
     if (!containerRef.current) return;
     const doc = document as any;
     const isFs = Boolean(
@@ -1882,20 +2014,50 @@ export default function NativeWebPlayer({
     );
     if (!isFs) {
       const el = containerRef.current as any;
-      if (el.requestFullscreen) {
-        el.requestFullscreen().catch(() => { });
-      } else if (el.webkitRequestFullscreen) {
-        el.webkitRequestFullscreen();
-      } else if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
-        (videoRef.current as any).webkitEnterFullscreen();
+      try {
+        if (el.requestFullscreen) {
+          await el.requestFullscreen();
+        } else if (el.webkitRequestFullscreen) {
+          await el.webkitRequestFullscreen();
+        } else if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
+          (videoRef.current as any).webkitEnterFullscreen();
+        }
+      } catch (fsErr) {
+        console.warn('[Player] Fullscreen request error:', fsErr);
       }
+
+      // Automatically lock screen orientation to Landscape on mobile devices
+      try {
+        const orientation = (screen as any)?.orientation || (screen as any)?.mozOrientation || (screen as any)?.msOrientation;
+        if (orientation && typeof orientation.lock === 'function') {
+          await orientation.lock('landscape').catch(() => {});
+        }
+      } catch (lockErr) {
+        console.warn('[Player] Orientation lock error:', lockErr);
+      }
+
       setIsFullscreen(true);
     } else {
-      if (doc.exitFullscreen) {
-        doc.exitFullscreen().catch(() => { });
-      } else if (doc.webkitExitFullscreen) {
-        doc.webkitExitFullscreen();
+      // Exit fullscreen & unlock orientation back to portrait
+      try {
+        const orientation = (screen as any)?.orientation || (screen as any)?.mozOrientation || (screen as any)?.msOrientation;
+        if (orientation && typeof orientation.unlock === 'function') {
+          orientation.unlock();
+        }
+      } catch (unlockErr) {
+        console.warn('[Player] Orientation unlock error:', unlockErr);
       }
+
+      try {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        }
+      } catch (exitErr) {
+        console.warn('[Player] Exit fullscreen error:', exitErr);
+      }
+
       setIsFullscreen(false);
       setShowEpisodesTray(false);
     }
@@ -1913,6 +2075,13 @@ export default function NativeWebPlayer({
       setIsFullscreen(fsActive);
       if (!fsActive) {
         setShowEpisodesTray(false);
+        // Automatically unlock screen orientation back to normal when exiting via back button/gesture
+        try {
+          const orientation = (screen as any)?.orientation || (screen as any)?.mozOrientation || (screen as any)?.msOrientation;
+          if (orientation && typeof orientation.unlock === 'function') {
+            orientation.unlock();
+          }
+        } catch {}
       }
     };
     document.addEventListener('fullscreenchange', handleFsChange);
@@ -1947,12 +2116,15 @@ export default function NativeWebPlayer({
           videoRef.current.muted = !videoRef.current.muted;
           setIsMuted(videoRef.current.muted);
         }
+      } else if (e.key === 'z' || e.key === 'a') {
+        e.preventDefault();
+        cycleFitMode();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [triggerControls]);
+  }, [triggerControls, cycleFitMode]);
 
   const [showPauseHero, setShowPauseHero] = useState(false);
   const pauseHeroTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1978,9 +2150,6 @@ export default function NativeWebPlayer({
       if (pauseHeroTimerRef.current) clearTimeout(pauseHeroTimerRef.current);
       pauseHeroTimerRef.current = setTimeout(() => {
         setShowPauseHero(true);
-        setShowQualityMenu(false);
-        setShowAudioDrawer(false);
-        setShowNextEpPreview(false);
       }, 1000);
     } else {
       if (pauseHeroTimerRef.current) clearTimeout(pauseHeroTimerRef.current);
@@ -2072,7 +2241,10 @@ export default function NativeWebPlayer({
             onNextEpisode();
           }
         }}
-        className="w-full h-full object-contain pointer-events-none select-none"
+        className={cn(
+          "w-full h-full pointer-events-none select-none transition-all duration-300",
+          fitMode === 'cover' ? 'object-cover' : fitMode === 'fill' ? 'object-fill' : 'object-contain'
+        )}
       >
         {activeSubtitleUri && (
           <track
@@ -2403,6 +2575,14 @@ export default function NativeWebPlayer({
         </div>
       )}
 
+      {/* 5.3 Screen Fit / Aspect Ratio HUD Toast */}
+      {fitToast && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none flex items-center gap-2.5 bg-black/85 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-[0_8px_32px_rgba(0,0,0,0.85)] animate-in fade-in zoom-in-95 duration-150">
+          <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-[#E50914] animate-pulse" />
+          <span className="text-xs sm:text-sm font-bold tracking-wide">{fitToast}</span>
+        </div>
+      )}
+
       {/* 6. Top Bar (Title & Episode on Left | Quality, CC Audio & Subtitles, Next Episode on Right) */}
       <div
         className={`absolute top-0 inset-x-0 px-3 sm:px-6 pt-2.5 sm:pt-4 pb-4 sm:pb-6 bg-gradient-to-b from-black/90 via-black/40 to-transparent flex items-center justify-between z-30 transition-opacity duration-300 ${
@@ -2437,11 +2617,7 @@ export default function NativeWebPlayer({
         </div>
 
         {/* Top-Right Actions: Quality + Audio & Subtitles + Next Episode */}
-        <div
-          className={`flex items-center gap-2 sm:gap-3 transition-opacity duration-300 ${
-            showPauseHero ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
-          }`}
-        >
+        <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto">
           {/* Quality Button with Popover */}
           <div
             className="relative"
@@ -2469,17 +2645,17 @@ export default function NativeWebPlayer({
               </span>
             </button>
 
-            {/* Quality Popover (Netflix Theme Matching Audio & Subtitles) */}
+            {/* Quality Popover (Netflix Theme Matching Audio & Subtitles) - Desktop (sm+) */}
             {showQualityMenu && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute top-full right-0 mt-2.5 w-52 bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-2 z-50 flex flex-col overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
+                className="hidden sm:flex absolute top-full right-0 mt-2.5 w-52 bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-2 z-50 flex-col overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
               >
-                <div className="px-3 py-2 text-[10.5px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1">
+                <div className="px-3 py-2 text-[10.5px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
                   <span>Video Quality</span>
                 </div>
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 max-h-[min(260px,calc(100vh-140px))] overflow-y-auto pr-0.5">
                   {availableQualities.map((q) => {
                     const isSelected = selectedQuality === q.key;
                     return (
@@ -2540,49 +2716,22 @@ export default function NativeWebPlayer({
               </span>
             </button>
 
-            {/* Netflix-style Single-Column Audio Popover Window */}
+            {/* Netflix-style Single-Column Audio Popover Window - Desktop (sm+) */}
             {showAudioDrawer && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute top-full right-0 mt-2.5 w-56 sm:w-60 bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-2 z-50 flex flex-col overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
+                className="hidden sm:flex absolute top-full right-0 mt-2.5 w-56 sm:w-60 bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-2 z-50 flex-col overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
               >
-                <div className="px-3 py-2 text-[10.5px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1">
+                <div className="px-3 py-2 text-[10.5px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
                   <span>Audio Track</span>
                 </div>
 
-                <div className="max-h-[300px] overflow-y-auto space-y-0.5 p-0.5">
-                  {/* Live HLS tracks if any */}
-                  {hlsAudioTracks.length > 1 && (
-                    <div className="mb-1.5 p-1 rounded-lg bg-white/[0.03] border border-white/5 space-y-0.5">
-                      {hlsAudioTracks.map((track, idx) => {
-                        const isCurrent = currentHlsAudioTrack === idx;
-                        return (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              if (hlsRef.current) {
-                                hlsRef.current.audioTrack = idx;
-                                setCurrentHlsAudioTrack(idx);
-                              }
-                            }}
-                            className={`w-full px-2 py-1 rounded-lg text-left text-[11px] flex items-center justify-between transition cursor-pointer ${isCurrent
-                              ? 'bg-red-600/20 text-white font-medium border border-red-500/30'
-                              : 'text-gray-300 hover:bg-white/5 hover:text-white'
-                              }`}
-                          >
-                            <span className="truncate">{track.name || track.lang || `Track ${idx + 1}`}</span>
-                            {isCurrent && <IoCheckmark size={14} className="text-[#E50914] shrink-0 ml-1 font-bold" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
+                <div className="max-h-[min(280px,calc(100vh-140px))] overflow-y-auto space-y-0.5 p-0.5">
                   {/* Spoken Languages List */}
                   {availableLanguages.map((item) => {
                     const isActive = activeLanguage === item.name;
-                    const flag = LANGUAGE_FLAGS[item.name] || '🌐';
+                    const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
                     return (
                       <button
                         key={item.name}
@@ -2595,11 +2744,27 @@ export default function NativeWebPlayer({
                           : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
                           }`}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <span className="w-3.5 text-center shrink-0">
                             {isActive && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
                           </span>
-                          <span className="text-sm select-none">{flag}</span>
+                          {countryCode ? (
+                            <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                              <img
+                                src={`https://flagcdn.com/w40/${countryCode}.png`}
+                                srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                                width="20"
+                                height="14"
+                                alt={`${item.name} flag`}
+                                className="w-full h-full object-cover select-none"
+                                loading="lazy"
+                              />
+                            </span>
+                          ) : (
+                            <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
+                              {LANGUAGE_FLAGS[item.name] || '🌐'}
+                            </span>
+                          )}
                           <div className="truncate">
                             <span className="text-[11px] block font-medium truncate">{item.name}</span>
                             <span className="text-[9px] text-gray-400 block truncate leading-none">
@@ -2637,7 +2802,7 @@ export default function NativeWebPlayer({
                 <IoPlaySkipForward size={12} />
               </button>
 
-              {/* Next Episode Hover Preview Popover */}
+              {/* Next Episode Hover Preview Popover - Desktop (sm+) */}
               {showNextEpPreview && (
                 <div
                   onClick={(e) => {
@@ -2645,7 +2810,7 @@ export default function NativeWebPlayer({
                     setShowNextEpPreview(false);
                     onNextEpisode?.();
                   }}
-                  className="absolute top-full right-0 mt-2.5 w-80 sm:w-96 bg-[#141416]/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.9)] hover:border-white/25 hover:shadow-[0_0_35px_rgba(255,255,255,0.08)] p-3 z-50 flex gap-3.5 cursor-pointer text-white animate-in fade-in zoom-in-95 duration-150 transition-all group"
+                  className="hidden sm:flex absolute top-full right-0 mt-2.5 w-80 sm:w-96 bg-[#141416]/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.9)] hover:border-white/25 hover:shadow-[0_0_35px_rgba(255,255,255,0.08)] p-3 z-50 gap-3.5 cursor-pointer text-white animate-in fade-in zoom-in-95 duration-150 transition-all group"
                 >
                   {/* Left: 16:9 Thumbnail with Play Button */}
                   <div className="relative w-36 sm:w-40 aspect-video rounded-xl overflow-hidden bg-black/50 flex-shrink-0 shadow-md border border-white/10">
@@ -2794,8 +2959,30 @@ export default function NativeWebPlayer({
             </div>
           )}
 
-          {/* Right: Fullscreen */}
-          <div className="flex items-center gap-3 sm:gap-4">
+          {/* Right: Screen Fit & Fullscreen */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Screen Fit / Aspect Ratio Toggle */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                cycleFitMode();
+              }}
+              className={cn(
+                "transition active:scale-95 cursor-pointer p-1.5 rounded-full hover:bg-white/10 flex items-center justify-center relative",
+                fitMode !== 'contain' ? "text-[#E50914]" : "text-white hover:text-white/80"
+              )}
+              title={`Screen Fit: ${fitMode === 'cover' ? 'Zoom to Fill (Best Fit)' : fitMode === 'fill' ? 'Stretch to Fit' : 'Original (Fit to Screen)'}`}
+              aria-label="Aspect Ratio / Screen Fit"
+            >
+              {fitMode === 'cover' ? (
+                <MdFitScreen size={21} />
+              ) : (
+                <MdAspectRatio size={21} />
+              )}
+            </button>
+
+            {/* Fullscreen */}
             <button
               type="button"
               onClick={(e) => {
@@ -3005,6 +3192,172 @@ export default function NativeWebPlayer({
       })()}
 
 
+
+      {/* 9. Mobile Responsive Bottom Sheet for Video Quality (Active on screens < sm) */}
+      {showQualityMenu && (
+        <div
+          ref={mobileQualityRef}
+          onClick={(e) => e.stopPropagation()}
+          className="sm:hidden absolute inset-0 z-50 flex flex-col justify-end pointer-events-auto select-none"
+        >
+          {/* Dark Backdrop (Tap to Dismiss) */}
+          <div
+            onClick={() => setShowQualityMenu(false)}
+            className="absolute inset-0 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
+          />
+
+          {/* Bottom Sheet Drawer */}
+          <div className="relative z-10 w-full max-h-[85%] bg-[#121212]/98 backdrop-blur-2xl border-t border-white/15 rounded-t-2xl shadow-[0_-10px_35px_rgba(0,0,0,0.95)] p-3 flex flex-col animate-in slide-in-from-bottom duration-250 ease-out text-white">
+            {/* Top Drag Pill */}
+            <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-2 shrink-0" />
+
+            {/* Header Row */}
+            <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#E50914] shadow-[0_0_8px_#E50914] shrink-0" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Video Quality</span>
+                <span className="text-[10px] text-gray-400 font-normal">
+                  ({selectedQuality === 'auto' ? 'Auto' : selectedQuality})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQualityMenu(false)}
+                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer"
+                aria-label="Close"
+              >
+                <IoClose size={15} />
+              </button>
+            </div>
+
+            {/* Scrollable Qualities List */}
+            <div className="overflow-y-auto space-y-1 pr-0.5 max-h-[140px] sm:max-h-[180px]">
+              {availableQualities.map((q) => {
+                const isSelected = selectedQuality === q.key;
+                return (
+                  <button
+                    key={q.key}
+                    type="button"
+                    onClick={() => {
+                      handleSelectQuality(q.key);
+                      setShowQualityMenu(false);
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl text-left text-xs flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                      isSelected
+                        ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                        : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-4 text-center shrink-0">
+                        {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                      </span>
+                      <span className="text-xs font-semibold truncate">{q.label}</span>
+                      {q.badge && (
+                        <span className="px-1.5 py-0.5 bg-white/10 text-[9px] text-gray-300 rounded font-medium shrink-0">
+                          {q.badge}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 10. Mobile Responsive Bottom Sheet for Audio Track (Active on screens < sm) */}
+      {showAudioDrawer && (
+        <div
+          ref={mobileAudioRef}
+          onClick={(e) => e.stopPropagation()}
+          className="sm:hidden absolute inset-0 z-50 flex flex-col justify-end pointer-events-auto select-none"
+        >
+          {/* Dark Backdrop (Tap to Dismiss) */}
+          <div
+            onClick={() => setShowAudioDrawer(false)}
+            className="absolute inset-0 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
+          />
+
+          {/* Bottom Sheet Drawer */}
+          <div className="relative z-10 w-full max-h-[85%] bg-[#121212]/98 backdrop-blur-2xl border-t border-white/15 rounded-t-2xl shadow-[0_-10px_35px_rgba(0,0,0,0.95)] p-3 flex flex-col animate-in slide-in-from-bottom duration-250 ease-out text-white">
+            {/* Top Drag Pill */}
+            <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-2 shrink-0" />
+
+            {/* Header Row */}
+            <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-[#E50914] shadow-[0_0_8px_#E50914] shrink-0" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Audio Track</span>
+                <span className="text-[10px] text-gray-400 font-normal truncate">
+                  ({activeLanguage || 'Default'})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAudioDrawer(false)}
+                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0 ml-2"
+                aria-label="Close"
+              >
+                <IoClose size={15} />
+              </button>
+            </div>
+
+            {/* Scrollable Audio Languages List */}
+            <div className="overflow-y-auto space-y-1 pr-0.5 max-h-[140px] sm:max-h-[180px]">
+              {availableLanguages.map((item) => {
+                const isActive = activeLanguage === item.name;
+                const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
+                return (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() => {
+                      handleSelectLanguage(item.name);
+                      setShowAudioDrawer(false);
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                      isActive
+                        ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                        : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-4 text-center shrink-0">
+                        {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                      </span>
+                      {countryCode ? (
+                        <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                          <img
+                            src={`https://flagcdn.com/w40/${countryCode}.png`}
+                            srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                            width="20"
+                            height="14"
+                            alt={`${item.name} flag`}
+                            className="w-full h-full object-cover select-none"
+                            loading="lazy"
+                          />
+                        </span>
+                      ) : (
+                        <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
+                          {LANGUAGE_FLAGS[item.name] || '🌐'}
+                        </span>
+                      )}
+                      <div className="truncate min-w-0">
+                        <span className="text-xs block font-medium truncate">{item.name}</span>
+                        <span className="text-[9px] text-gray-400 block truncate leading-none">
+                          {item.name === originalLanguage ? 'Original Audio' : `${item.count} sources`}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Global CSS for native video subtitle cue styling */}
       <style jsx global>{`

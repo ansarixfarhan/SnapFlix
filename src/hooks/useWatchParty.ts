@@ -100,6 +100,7 @@ export function useWatchParty({
 
       // 1. Remote Play
       channel.on('broadcast', { event: 'party-play' }, ({ payload }) => {
+        if (payload?.senderId === clientIdRef.current || payload?.sender === displayName) return;
         if (typeof payload?.time === 'number') {
           showToast(`▶ ${payload.sender || 'Partner'} played`, 2000);
           onRemotePlayRef.current?.(payload.time, payload.sender || 'Partner');
@@ -108,6 +109,7 @@ export function useWatchParty({
 
       // 2. Remote Pause
       channel.on('broadcast', { event: 'party-pause' }, ({ payload }) => {
+        if (payload?.senderId === clientIdRef.current || payload?.sender === displayName) return;
         if (typeof payload?.time === 'number') {
           showToast(`⏸ ${payload.sender || 'Partner'} paused`, 2000);
           onRemotePauseRef.current?.(payload.time, payload.sender || 'Partner');
@@ -116,6 +118,7 @@ export function useWatchParty({
 
       // 3. Remote Seek
       channel.on('broadcast', { event: 'party-seek' }, ({ payload }) => {
+        if (payload?.senderId === clientIdRef.current || payload?.sender === displayName) return;
         if (typeof payload?.time === 'number') {
           const mins = Math.floor(payload.time / 60);
           const secs = Math.floor(payload.time % 60);
@@ -127,20 +130,22 @@ export function useWatchParty({
 
       // 4. Remote Sync Request (someone newly joined)
       channel.on('broadcast', { event: 'party-sync-request' }, ({ payload }) => {
+        if (payload?.senderId === clientIdRef.current || payload?.sender === displayName) return;
         showToast(`🟢 ${payload.sender || 'Partner'} joined the party!`, 3000);
         onRemoteSyncRequestRef.current?.(payload.sender || 'Partner');
       });
 
-      // 5. Remote Sync State Response
+      // 5. Remote Sync State Response (Silent periodic sync - NO TOAST!)
       channel.on('broadcast', { event: 'party-sync-state' }, ({ payload }) => {
+        if (payload?.senderId === clientIdRef.current || payload?.sender === displayName) return;
         if (typeof payload?.time === 'number') {
-          showToast(`⚡ Synced with ${payload.sender || 'Host'}`, 2500);
           onRemoteSyncStateRef.current?.(payload.time, Boolean(payload.isPlaying), payload.sender || 'Host');
         }
       });
 
       // 6. Remote Reaction
       channel.on('broadcast', { event: 'party-reaction' }, ({ payload }) => {
+        if (payload?.senderId === clientIdRef.current) return;
         if (payload?.emoji) {
           const newReaction: FloatingReaction = {
             id: payload.id || String(Date.now() + Math.random()),
@@ -278,7 +283,7 @@ export function useWatchParty({
       channelRef.current.send({
         type: 'broadcast',
         event: 'party-play',
-        payload: { time, sender: displayName },
+        payload: { time, sender: displayName, senderId: clientIdRef.current },
       });
     },
     [partyRoomId, displayName]
@@ -290,7 +295,7 @@ export function useWatchParty({
       channelRef.current.send({
         type: 'broadcast',
         event: 'party-pause',
-        payload: { time, sender: displayName },
+        payload: { time, sender: displayName, senderId: clientIdRef.current },
       });
     },
     [partyRoomId, displayName]
@@ -302,7 +307,7 @@ export function useWatchParty({
       channelRef.current.send({
         type: 'broadcast',
         event: 'party-seek',
-        payload: { time, sender: displayName },
+        payload: { time, sender: displayName, senderId: clientIdRef.current },
       });
     },
     [partyRoomId, displayName]
@@ -314,7 +319,7 @@ export function useWatchParty({
       channelRef.current.send({
         type: 'broadcast',
         event: 'party-sync-state',
-        payload: { time, isPlaying, sender: displayName },
+        payload: { time, isPlaying, sender: displayName, senderId: clientIdRef.current },
       });
     },
     [partyRoomId, displayName]
@@ -339,7 +344,7 @@ export function useWatchParty({
         channelRef.current.send({
           type: 'broadcast',
           event: 'party-reaction',
-          payload: { emoji, id, sender: displayName },
+          payload: { emoji, id, sender: displayName, senderId: clientIdRef.current },
         });
       }
     },
@@ -388,3 +393,4 @@ export function useWatchParty({
     broadcastReaction,
   };
 }
+

@@ -481,6 +481,11 @@ export default function NativeWebPlayer({
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const doubleTapDismissTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Mobile Pinch-to-Zoom (Screen Fit / Best Fit)
+  const touchStartDistanceRef = useRef<number | null>(null);
+  const pinchDeltaRef = useRef<number>(0);
+  const isPinchingRef = useRef<boolean>(false);
+
   // Watch History & Auto-Resume States
   const { data: user } = useSupabaseUser();
   const [savedResumeTime, setSavedResumeTime] = useState<number>(0);
@@ -532,27 +537,32 @@ export default function NativeWebPlayer({
     },
     onRemoteSyncState: (time, isPlayingRemote) => {
       if (!videoRef.current) return;
-      isRemoteActionRef.current = true;
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
-      if (isPlayingRemote) {
+      const cur = videoRef.current.currentTime;
+      if (Math.abs(cur - time) > 2.5) {
+        isRemoteActionRef.current = true;
+        videoRef.current.currentTime = time;
+        setCurrentTime(time);
+      }
+      if (isPlayingRemote && videoRef.current.paused) {
+        isRemoteActionRef.current = true;
         videoRef.current.play().catch(() => {});
         setIsPlaying(true);
-      } else {
+      } else if (!isPlayingRemote && !videoRef.current.paused) {
+        isRemoteActionRef.current = true;
         videoRef.current.pause();
         setIsPlaying(false);
       }
     },
   });
 
-  // Periodic Drift Sync (Host keeps partner aligned within 1.5s)
+  // Periodic Drift Sync (Host keeps partner aligned silently, every 8 seconds)
   useEffect(() => {
     if (!party.isPartyActive || !party.isHost || !isPlaying) return;
     const interval = setInterval(() => {
       if (videoRef.current && !videoRef.current.paused) {
         party.broadcastSyncState(videoRef.current.currentTime, true);
       }
-    }, 5000);
+    }, 8000);
     return () => clearInterval(interval);
   }, [party.isPartyActive, party.isHost, isPlaying, party.broadcastSyncState]);
 
@@ -1991,6 +2001,7 @@ export default function NativeWebPlayer({
   // Screen click toggles player buttons visibility (hide if visible, show if hidden) - NEVER plays/pauses on screen tap
   // YouTube-Style: Double-tap on right half skips +10s, double-tap on left half rewinds -10s
   const handleContainerClick = (e: React.MouseEvent) => {
+    if (isPinchingRef.current) return;
     const container = containerRef.current;
     const rect = container?.getBoundingClientRect();
     const clientX =
@@ -2239,8 +2250,66 @@ export default function NativeWebPlayer({
         triggerControls();
       }}
       onTouchStart={(e) => {
-        if (e.touches && e.touches[0]) {
+        if (e.touches && e.touches.length === 2) {
+          isPinchingRef.current = true;
+          const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          touchStartDistanceRef.current = dist;
+          pinchDeltaRef.current = 0;
+          if (singleTapTimerRef.current) {
+            clearTimeout(singleTapTimerRef.current);
+            singleTapTimerRef.current = null;
+          }
+        } else if (e.touches && e.touches[0]) {
+          isPinchingRef.current = false;
+          touchStartDistanceRef.current = null;
           lastTouchXRef.current = e.touches[0].clientX;
+        }
+      }}
+      onTouchMove={(e) => {
+        if (e.touches && e.touches.length === 2 && touchStartDistanceRef.current !== null) {
+          isPinchingRef.current = true;
+          const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          pinchDeltaRef.current = dist - touchStartDistanceRef.current;
+        }
+      }}
+      onTouchEnd={() => {
+        if (isPinchingRef.current) {
+          const delta = pinchDeltaRef.current;
+          touchStartDistanceRef.current = null;
+          pinchDeltaRef.current = 0;
+          setTimeout(() => {
+            isPinchingRef.current = false;
+          }, 150);
+
+          if (delta > 35) {
+            // Pinch OUT -> Zoom to fill (Best Fit / Fullscreen cover)
+            if (fitMode !== 'cover') {
+              setFitMode('cover');
+              setFitToast('Zoom to Fill (Best Fit)');
+              if (fitToastTimeoutRef.current) clearTimeout(fitToastTimeoutRef.current);
+              fitToastTimeoutRef.current = setTimeout(() => setFitToast(null), 1600);
+              try {
+                localStorage.setItem('snapflix_player_fit', 'cover');
+              } catch {}
+            }
+          } else if (delta < -35) {
+            // Pinch IN -> Original fit to screen (contain)
+            if (fitMode !== 'contain') {
+              setFitMode('contain');
+              setFitToast('Original (Fit to Screen)');
+              if (fitToastTimeoutRef.current) clearTimeout(fitToastTimeoutRef.current);
+              fitToastTimeoutRef.current = setTimeout(() => setFitToast(null), 1600);
+              try {
+                localStorage.setItem('snapflix_player_fit', 'contain');
+              } catch {}
+            }
+          }
         }
       }}
       onClick={handleContainerClick}
@@ -3099,16 +3168,16 @@ export default function NativeWebPlayer({
                 cycleFitMode();
               }}
               className={cn(
-                "transition active:scale-95 cursor-pointer p-1.5 rounded-full hover:bg-white/10 flex items-center justify-center relative",
+                "transition active:scale-95 cursor-pointer p-2 rounded-full hover:bg-white/10 flex items-center justify-center relative",
                 fitMode !== 'contain' ? "text-[#E50914]" : "text-white hover:text-white/80"
               )}
               title={`Screen Fit: ${fitMode === 'cover' ? 'Zoom to Fill (Best Fit)' : fitMode === 'fill' ? 'Stretch to Fit' : 'Original (Fit to Screen)'}`}
               aria-label="Aspect Ratio / Screen Fit"
             >
               {fitMode === 'cover' ? (
-                <MdFitScreen size={21} />
+                <MdFitScreen size={22} />
               ) : (
-                <MdAspectRatio size={21} />
+                <MdAspectRatio size={22} />
               )}
             </button>
 

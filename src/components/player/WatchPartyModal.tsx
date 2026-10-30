@@ -84,7 +84,7 @@ export default function WatchPartyModal({
             {/* Start Watch Party CTA */}
             <div className="bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/10 rounded-2xl p-4 sm:p-5 text-center space-y-3">
               <p className="text-xs sm:text-sm text-white/80 leading-relaxed font-normal">
-                Start a party and share the link with your girl. Whatever you play, pause, or seek will sync on both devices instantly!
+                Start a party and share the link with your partner, friends & family. Whatever you play, pause, or seek will sync on both devices instantly!
               </p>
               <Button
                 size="lg"
@@ -232,3 +232,4 @@ export default function WatchPartyModal({
     </div>
   );
 }
+

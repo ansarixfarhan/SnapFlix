@@ -1,7 +1,7 @@
 "use client";
 
 import useBreakpoints from "@/hooks/useBreakpoints";
-import { Accordion, AccordionItem, Link } from "@heroui/react";
+import { Accordion, AccordionItem } from "@heroui/react";
 
 const FAQS = [
   {
@@ -15,23 +15,9 @@ const FAQS = [
       "Well, let me tell you what we don’t do: we definitely don’t illegally host our files. We do not store any copyright-protected content on our website. Any linked content is stored only in third-party websites. This is a promotional website only. All files placed here are for introducing purpose. We highly ENCOURAGE users to BUY the CDs or DVDs of the movie or the music they like.",
   },
   {
-    title: "🚫 I cannot watch video because of ads",
-    description: (
-      <p>
-        We are very sorry that we can't help you with that. We have no control in the ads being
-        served. Don't download anything in the popups. If you don't want to be annoyed. We highly
-        recommend subscribing to a legal streaming service that you can afford (or use an adblocker
-        like{" "}
-        <Link href="https://ublockorigin.com/" target="_blank" className="font-bold">
-          uBlock Origin
-        </Link>{" "}
-        or{" "}
-        <Link href="https://adblockplus.org/" target="_blank" className="font-bold">
-          Adblock Plus
-        </Link>
-        ).
-      </p>
-    ),
+    title: "✨ Are there any ads or popups on SnapFlix?",
+    description:
+      "No! SnapFlix is completely ad-free. Our custom native web player streams directly without any third-party ad popups, redirects, or banners for an uninterrupted, cinematic viewing experience.",
   },
   {
     title: "🐌 Streaming speed is slow or all videos do not play",

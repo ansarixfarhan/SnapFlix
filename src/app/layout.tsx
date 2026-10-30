@@ -8,10 +8,10 @@ import TopNavbar from "@/components/ui/layout/TopNavbar";
 import BottomNavbar from "@/components/ui/layout/BottomNavbar";
 import Sidebar from "@/components/ui/layout/Sidebar";
 import { cn } from "@/utils/helpers";
-import dynamic from "next/dynamic";
+
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Suspense } from "react";
-const AdShield = dynamic(() => import("@/components/ui/other/AdShield"));
+
 
 export const metadata: Metadata = {
   title: siteConfig.name,
@@ -80,7 +80,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Suspense>
           <NuqsAdapter>
             <Providers>
-              <AdShield />
+
               <TopNavbar />
               <Sidebar>
                 <main id="main" className="w-full min-h-screen overflow-x-hidden scroll-mt-20">

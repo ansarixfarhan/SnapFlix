@@ -3046,9 +3046,6 @@ export default function NativeWebPlayer({
                         <span className="w-3.5 text-center shrink-0">
                           {activeSubtitleId === 'off' && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
                         </span>
-                        <span className="w-5 h-3.5 rounded-[3px] shrink-0 inline-flex items-center justify-center text-[10px] font-bold text-gray-400 bg-white/10 border border-white/10">
-                          ✕
-                        </span>
                         <span className="text-[11px] font-medium">Off</span>
                       </div>
                     </button>
@@ -3071,7 +3068,7 @@ export default function NativeWebPlayer({
                             <span className="w-3.5 text-center shrink-0">
                               {isActive && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
                             </span>
-                            {countryCode ? (
+                            {countryCode && (
                               <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
                                 <img
                                   src={`https://flagcdn.com/w40/${countryCode}.png`}
@@ -3082,10 +3079,6 @@ export default function NativeWebPlayer({
                                   className="w-full h-full object-cover select-none"
                                   loading="lazy"
                                 />
-                              </span>
-                            ) : (
-                              <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
-                                💬
                               </span>
                             )}
                             <span className="text-[11px] font-medium truncate">{sub.title}</span>
@@ -3775,9 +3768,6 @@ export default function NativeWebPlayer({
                     <span className="w-4 text-center shrink-0">
                       {activeSubtitleId === 'off' && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
                     </span>
-                    <span className="w-5 h-3.5 rounded-[3px] shrink-0 inline-flex items-center justify-center text-[10px] font-bold text-gray-400 bg-white/10 border border-white/10">
-                      ✕
-                    </span>
                     <span className="text-xs font-medium">Off</span>
                   </div>
                 </button>
@@ -3801,7 +3791,7 @@ export default function NativeWebPlayer({
                         <span className="w-4 text-center shrink-0">
                           {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
                         </span>
-                        {countryCode ? (
+                        {countryCode && (
                           <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
                             <img
                               src={`https://flagcdn.com/w40/${countryCode}.png`}
@@ -3812,10 +3802,6 @@ export default function NativeWebPlayer({
                               className="w-full h-full object-cover select-none"
                               loading="lazy"
                             />
-                          </span>
-                        ) : (
-                          <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
-                            💬
                           </span>
                         )}
                         <span className="text-xs font-medium truncate">{sub.title}</span>

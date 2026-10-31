@@ -1,7 +1,7 @@
 "use server";
 
-const APPEND =
-  "images,videos,credits,keywords,recommendations,similar,reviews,watch/providers,episode_groups";
+// Optimized append payload: removes huge unused data (reviews, similar, redundant providers) to prevent Cloudflare Worker Error 1102
+const APPEND = "images,videos,credits,keywords,recommendations,episode_groups";
 
 type CatalogError = "not-found" | "unavailable";
 
@@ -27,10 +27,17 @@ async function fetchFromMirror(path: string, params: Record<string, string> = {}
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
     }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
     const response = await fetch(url.toString(), {
       headers: { accept: "application/json" },
+      signal: controller.signal,
       next: { revalidate: 600 },
     });
+    clearTimeout(timeoutId);
+
     if (response.status === 404) return { error: "not-found" };
     if (!response.ok) return { error: "unavailable" };
     return { data: await response.json() };
@@ -51,13 +58,18 @@ async function tmdbGet(path: string, params: Record<string, string> = {}): Promi
     }
     if (apiKey) url.searchParams.set("api_key", apiKey);
 
-    const response = await fetch(url, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+    const response = await fetch(url.toString(), {
       headers: {
         accept: "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      signal: controller.signal,
       next: { revalidate: 600 },
     });
+    clearTimeout(timeoutId);
 
     if (response.status === 404) return { error: "not-found" };
     if (!response.ok) {

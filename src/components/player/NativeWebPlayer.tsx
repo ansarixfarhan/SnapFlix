@@ -1055,7 +1055,7 @@ export default function NativeWebPlayer({
     const calculateOptimalCueLine = () => {
       const v = videoRef.current;
       if (!v || !v.videoWidth || !v.videoHeight || !v.clientHeight) {
-        return 89;
+        return 88;
       }
       const elW = v.clientWidth || v.parentElement?.clientWidth || window.innerWidth;
       const elH = v.clientHeight || v.parentElement?.clientHeight || window.innerHeight;
@@ -1066,14 +1066,13 @@ export default function NativeWebPlayer({
         // Video has black letterbox bars top and bottom (e.g. 2.39:1 widescreen movie)
         const renderedH = elW / videoAspect;
         const bottomMovieEdge = (elH + renderedH) / 2;
-        // User requested: "jahan se niche se movie ka page hai na usse 1px niche chahiye"
-        // Place cue 1-2px below the bottom edge of the movie image into the black bar:
-        const targetY = bottomMovieEdge + 2;
-        const percent = Math.min(94, Math.max(82, (targetY / elH) * 100));
+        // Lift 1-2px higher as requested right along the movie picture boundary
+        const targetY = bottomMovieEdge;
+        const percent = Math.min(93, Math.max(81, (targetY / elH) * 100));
         return Math.round(percent * 10) / 10;
       } else {
         // Full screen or pillarbox
-        return 90;
+        return 89;
       }
     };
 
@@ -1841,7 +1840,7 @@ export default function NativeWebPlayer({
         (_match, timing, settings) => {
           const s = (settings || '').trim();
           if (!s.includes('line:')) {
-            return `${timing} ${s ? s + ' ' : ''}line:89%`.trim();
+            return `${timing} ${s ? s + ' ' : ''}line:88%`.trim();
           }
           return `${timing} ${s}`.trim();
         }

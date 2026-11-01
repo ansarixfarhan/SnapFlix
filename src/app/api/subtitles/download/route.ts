@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       (_match, timing, settings) => {
         const s = (settings || '').trim();
         if (!s.includes('line:')) {
-          return `${timing} ${s ? s + ' ' : ''}line:89%`.trim();
+          return `${timing} ${s ? s + ' ' : ''}line:88%`.trim();
         }
         return `${timing} ${s}`.trim();
       }

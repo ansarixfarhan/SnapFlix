@@ -570,7 +570,8 @@ export default function NativeWebPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [showAudioDrawer, setShowAudioDrawer] = useState(false);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [showMobileDrawer, setShowMobileDrawer] = useState(false);
   const [mobileDrawerTab, setMobileDrawerTab] = useState<'audio' | 'subtitles' | 'quality' | 'servers'>('audio');
   const [showEpisodesTray, setShowEpisodesTray] = useState(false);
   const [autoPlayNext, setAutoPlayNext] = useState(true);
@@ -1042,27 +1043,31 @@ export default function NativeWebPlayer({
   const mobileQualityRef = useRef<HTMLDivElement>(null);
   const qualityMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Helper to detect touch devices
-  const isTouchDevice = () => {
-    return typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0 || !window.matchMedia('(hover: hover)').matches);
+  // Screen & Pointer detection helpers
+  const isMobileScreen = () => {
+    return typeof window !== 'undefined' && window.innerWidth < 640;
+  };
+
+  const canHover = () => {
+    return typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
   };
 
   // Server Switcher Popover Handlers
   const handleServerMouseEnter = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (serverMenuTimeoutRef.current) clearTimeout(serverMenuTimeoutRef.current);
     if (qualityMenuTimeoutRef.current) clearTimeout(qualityMenuTimeoutRef.current);
     if (audioMenuTimeoutRef.current) clearTimeout(audioMenuTimeoutRef.current);
     if (nextEpPreviewTimeoutRef.current) clearTimeout(nextEpPreviewTimeoutRef.current);
     setShowQualityMenu(false);
-    setShowAudioDrawer(false);
+    setShowAudioMenu(false);
     setShowNextEpPreview(false);
     setShowServerMenu(true);
     triggerControls();
   };
 
   const handleServerMouseLeave = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (serverMenuTimeoutRef.current) clearTimeout(serverMenuTimeoutRef.current);
     serverMenuTimeoutRef.current = setTimeout(() => {
       setShowServerMenu(false);
@@ -1086,20 +1091,20 @@ export default function NativeWebPlayer({
   }, [showServerMenu]);
 
   const handleQualityMouseEnter = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (qualityMenuTimeoutRef.current) clearTimeout(qualityMenuTimeoutRef.current);
     if (serverMenuTimeoutRef.current) clearTimeout(serverMenuTimeoutRef.current);
     if (audioMenuTimeoutRef.current) clearTimeout(audioMenuTimeoutRef.current);
     if (nextEpPreviewTimeoutRef.current) clearTimeout(nextEpPreviewTimeoutRef.current);
     setShowServerMenu(false);
-    setShowAudioDrawer(false);
+    setShowAudioMenu(false);
     setShowNextEpPreview(false);
     setShowQualityMenu(true);
     triggerControls();
   };
 
   const handleQualityMouseLeave = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (qualityMenuTimeoutRef.current) clearTimeout(qualityMenuTimeoutRef.current);
     qualityMenuTimeoutRef.current = setTimeout(() => {
       setShowQualityMenu(false);
@@ -1128,7 +1133,7 @@ export default function NativeWebPlayer({
   const audioMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleAudioMouseEnter = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (audioMenuTimeoutRef.current) clearTimeout(audioMenuTimeoutRef.current);
     if (serverMenuTimeoutRef.current) clearTimeout(serverMenuTimeoutRef.current);
     if (qualityMenuTimeoutRef.current) clearTimeout(qualityMenuTimeoutRef.current);
@@ -1136,15 +1141,15 @@ export default function NativeWebPlayer({
     setShowServerMenu(false);
     setShowQualityMenu(false);
     setShowNextEpPreview(false);
-    setShowAudioDrawer(true);
+    setShowAudioMenu(true);
     triggerControls();
   };
 
   const handleAudioMouseLeave = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (audioMenuTimeoutRef.current) clearTimeout(audioMenuTimeoutRef.current);
     audioMenuTimeoutRef.current = setTimeout(() => {
-      setShowAudioDrawer(false);
+      setShowAudioMenu(false);
     }, 150);
   };
 
@@ -1155,14 +1160,14 @@ export default function NativeWebPlayer({
       const insideDesktop = audioMenuRef.current?.contains(target);
       const insideMobile = mobileAudioRef.current?.contains(target);
       if (!insideDesktop && !insideMobile) {
-        setShowAudioDrawer(false);
+        setShowAudioMenu(false);
       }
     };
-    if (showAudioDrawer) {
+    if (showAudioMenu) {
       document.addEventListener('pointerdown', handleClickOutside);
     }
     return () => document.removeEventListener('pointerdown', handleClickOutside);
-  }, [showAudioDrawer]);
+  }, [showAudioMenu]);
 
   // Next Episode Preview Popover Ref & Handlers
   const nextEpPreviewRef = useRef<HTMLDivElement>(null);
@@ -1175,20 +1180,20 @@ export default function NativeWebPlayer({
   }, [episodes, episode]);
 
   const handleNextEpMouseEnter = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (nextEpPreviewTimeoutRef.current) clearTimeout(nextEpPreviewTimeoutRef.current);
     if (serverMenuTimeoutRef.current) clearTimeout(serverMenuTimeoutRef.current);
     if (qualityMenuTimeoutRef.current) clearTimeout(qualityMenuTimeoutRef.current);
     if (audioMenuTimeoutRef.current) clearTimeout(audioMenuTimeoutRef.current);
     setShowServerMenu(false);
     setShowQualityMenu(false);
-    setShowAudioDrawer(false);
+    setShowAudioMenu(false);
     setShowNextEpPreview(true);
     triggerControls();
   };
 
   const handleNextEpMouseLeave = () => {
-    if (isTouchDevice()) return;
+    if (!canHover() || isMobileScreen()) return;
     if (nextEpPreviewTimeoutRef.current) clearTimeout(nextEpPreviewTimeoutRef.current);
     nextEpPreviewTimeoutRef.current = setTimeout(() => {
       setShowNextEpPreview(false);
@@ -1276,7 +1281,8 @@ export default function NativeWebPlayer({
       if (trackIdx !== -1) {
         hlsRef.current.audioTrack = trackIdx;
         setCurrentHlsAudioTrack(trackIdx);
-        setShowAudioDrawer(false);
+        setShowAudioMenu(false);
+        setShowMobileDrawer(false);
         return;
       }
     }
@@ -1334,11 +1340,13 @@ export default function NativeWebPlayer({
     if (candidateStream) {
       resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
       setSelectedStream(candidateStream);
-      setShowAudioDrawer(false);
+      setShowAudioMenu(false);
+      setShowMobileDrawer(false);
       return;
     }
 
-    setShowAudioDrawer(false);
+    setShowAudioMenu(false);
+    setShowMobileDrawer(false);
   };
 
   // Memoized stream lists for Server Switcher
@@ -1370,7 +1378,7 @@ export default function NativeWebPlayer({
   const handleSelectServer = (targetProvider: 'vidly' | 'vidy', stream: StreamItem) => {
     if (stream.link === selectedStream?.link) {
       setShowServerMenu(false);
-      setShowAudioDrawer(false);
+      setShowMobileDrawer(false);
       return;
     }
 
@@ -1395,7 +1403,7 @@ export default function NativeWebPlayer({
     });
 
     setShowServerMenu(false);
-    setShowAudioDrawer(false);
+    setShowMobileDrawer(false);
     triggerControls();
   };
 
@@ -1475,7 +1483,7 @@ export default function NativeWebPlayer({
   const handleSelectQuality = (targetQuality: string) => {
     setSelectedQuality(targetQuality);
     setShowQualityMenu(false);
-    setShowAudioDrawer(false);
+    setShowMobileDrawer(false);
 
     if (targetQuality === 'auto') {
       if (hlsRef.current) {
@@ -2367,8 +2375,10 @@ export default function NativeWebPlayer({
 
       // Keep player buttons hidden on double-tap
       setShowControls(false);
+      setShowServerMenu(false);
       setShowQualityMenu(false);
-      setShowAudioDrawer(false);
+      setShowAudioMenu(false);
+      setShowMobileDrawer(false);
       setShowNextEpPreview(false);
 
       if (isRightHalf) {
@@ -2395,8 +2405,10 @@ export default function NativeWebPlayer({
           }, 3500);
         } else {
           if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+          setShowServerMenu(false);
           setShowQualityMenu(false);
-          setShowAudioDrawer(false);
+          setShowAudioMenu(false);
+          setShowMobileDrawer(false);
           setShowNextEpPreview(false);
         }
         return next;
@@ -2586,7 +2598,7 @@ export default function NativeWebPlayer({
     <div
       ref={containerRef}
       onMouseMove={() => {
-        if (isTouchDevice()) return;
+        if (!canHover()) return;
         triggerControls();
       }}
       onTouchStart={(e) => {
@@ -2969,7 +2981,14 @@ export default function NativeWebPlayer({
               variant="flat"
               className="bg-white/10 hover:bg-white/20 text-white border border-white/10"
               startContent={<IoLanguageOutline />}
-              onClick={() => setShowAudioDrawer(true)}
+              onClick={() => {
+                if (isMobileScreen()) {
+                  setMobileDrawerTab('audio');
+                  setShowMobileDrawer(true);
+                } else {
+                  setShowAudioMenu(true);
+                }
+              }}
             >
               Audio Languages
             </Button>
@@ -3140,14 +3159,14 @@ export default function NativeWebPlayer({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (isTouchDevice()) {
+                if (isMobileScreen()) {
                   setMobileDrawerTab('servers');
-                  setShowAudioDrawer(true);
+                  setShowMobileDrawer(true);
                   return;
                 }
                 if (serverMenuTimeoutRef.current) clearTimeout(serverMenuTimeoutRef.current);
                 setShowQualityMenu(false);
-                setShowAudioDrawer(false);
+                setShowAudioMenu(false);
                 setShowNextEpPreview(false);
                 setShowServerMenu((prev) => !prev);
                 triggerControls();
@@ -3295,14 +3314,14 @@ export default function NativeWebPlayer({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (isTouchDevice()) {
+                if (isMobileScreen()) {
                   setMobileDrawerTab('quality');
-                  setShowAudioDrawer(true);
+                  setShowMobileDrawer(true);
                   return;
                 }
                 if (qualityMenuTimeoutRef.current) clearTimeout(qualityMenuTimeoutRef.current);
                 setShowServerMenu(false);
-                setShowAudioDrawer(false);
+                setShowAudioMenu(false);
                 setShowNextEpPreview(false);
                 setShowQualityMenu((prev) => !prev);
                 triggerControls();
@@ -3473,10 +3492,16 @@ export default function NativeWebPlayer({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                if (isMobileScreen()) {
+                  setMobileDrawerTab('audio');
+                  setShowMobileDrawer(true);
+                  return;
+                }
                 if (audioMenuTimeoutRef.current) clearTimeout(audioMenuTimeoutRef.current);
+                setShowServerMenu(false);
                 setShowQualityMenu(false);
                 setShowNextEpPreview(false);
-                setShowAudioDrawer((prev) => !prev);
+                setShowAudioMenu((prev) => !prev);
                 triggerControls();
               }}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-xs font-semibold text-white/90 hover:text-white transition cursor-pointer backdrop-blur-md active:scale-95 shadow-md shrink-0 pointer-events-auto"
@@ -3487,7 +3512,7 @@ export default function NativeWebPlayer({
             </button>
 
             {/* Netflix-style 2-Column Audio & Subtitles Popover Window - Desktop (sm+) */}
-            {showAudioDrawer && (
+            {showAudioMenu && (
               <div
                 onClick={(e) => e.stopPropagation()}
                 className="hidden sm:flex absolute top-full right-0 mt-2.5 w-[500px] md:w-[540px] bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_50px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-3.5 z-50 flex-row overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
@@ -4093,7 +4118,7 @@ export default function NativeWebPlayer({
       />
 
       {/* 9. Unified Mobile Responsive Bottom Sheet for Servers, Quality, Audio & Subtitles (Active on screens < sm) */}
-      {showAudioDrawer && (
+      {showMobileDrawer && (
         <div
           ref={mobileAudioRef}
           onClick={(e) => e.stopPropagation()}
@@ -4101,7 +4126,7 @@ export default function NativeWebPlayer({
         >
           {/* Dark Backdrop (Tap to Dismiss) */}
           <div
-            onClick={() => setShowAudioDrawer(false)}
+            onClick={() => setShowMobileDrawer(false)}
             className="absolute inset-0 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
           />
 
@@ -4177,7 +4202,7 @@ export default function NativeWebPlayer({
                 )}
                 <button
                   type="button"
-                  onClick={() => setShowAudioDrawer(false)}
+                  onClick={() => setShowMobileDrawer(false)}
                   className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
                   aria-label="Close"
                 >
@@ -4308,7 +4333,7 @@ export default function NativeWebPlayer({
                           type="button"
                           onClick={() => {
                             handleSelectQuality(q.key);
-                            setShowAudioDrawer(false);
+                            setShowMobileDrawer(false);
                           }}
                           className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
                             isSelected
@@ -4350,7 +4375,7 @@ export default function NativeWebPlayer({
                             type="button"
                             onClick={() => {
                               handleSelectQuality(q.key);
-                              setShowAudioDrawer(false);
+                              setShowMobileDrawer(false);
                             }}
                             className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
                               isSelected
@@ -4392,7 +4417,7 @@ export default function NativeWebPlayer({
                             type="button"
                             onClick={() => {
                               handleSelectQuality(q.key);
-                              setShowAudioDrawer(false);
+                              setShowMobileDrawer(false);
                             }}
                             className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
                               isSelected

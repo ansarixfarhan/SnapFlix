@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Hls from 'hls.js';
 import {
   IoPlay,
@@ -3891,117 +3892,184 @@ export default function NativeWebPlayer({
         className="hidden"
       />
 
-      {/* 9. Unified Mobile Responsive Bottom Sheet for Servers, Quality, Audio & Subtitles (Active on screens < sm) */}
-      {showMobileDrawer && (
-        <div
-          ref={mobileAudioRef}
-          onClick={(e) => e.stopPropagation()}
-          className="sm:hidden absolute inset-0 z-50 flex flex-col justify-end pointer-events-auto select-none"
-        >
-          {/* Dark Backdrop (Tap to Dismiss) */}
+      {/* 9. Unified Mobile Responsive Bottom Sheet for Servers, Quality, Audio & Subtitles (Portaled to Bottom 0) */}
+      {showMobileDrawer &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            onClick={() => setShowMobileDrawer(false)}
-            className="absolute inset-0 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
-          />
+            ref={mobileAudioRef}
+            onClick={(e) => e.stopPropagation()}
+            className="sm:hidden fixed inset-0 z-[999999] flex flex-col justify-end pointer-events-auto select-none"
+          >
+            {/* Dark Backdrop (Tap to Dismiss) */}
+            <div
+              onClick={() => setShowMobileDrawer(false)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200"
+            />
 
-          {/* Bottom Sheet Drawer */}
-          <div className="relative z-10 w-full max-h-[85%] bg-[#121212]/98 backdrop-blur-2xl border-t border-white/15 rounded-t-2xl shadow-[0_-10px_35px_rgba(0,0,0,0.95)] p-3 flex flex-col animate-in slide-in-from-bottom duration-250 ease-out text-white">
-            {/* Top Drag Pill */}
-            <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-2 shrink-0" />
+            {/* Bottom Sheet Drawer (Slides up from bottom 0) */}
+            <div className="relative z-10 w-full max-h-[85vh] bg-[#121212]/98 backdrop-blur-2xl border-t border-white/15 rounded-t-3xl shadow-[0_-12px_45px_rgba(0,0,0,0.95)] p-4 pb-8 flex flex-col animate-in slide-in-from-bottom duration-300 ease-out text-white">
+              {/* Top Drag Handle */}
+              <div className="w-12 h-1.5 rounded-full bg-white/20 mx-auto mb-3 shrink-0" />
 
-            {/* Header Row with Tabs: Server | Quality | Audio | Subtitles */}
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 shrink-0">
-              <div className="flex items-center gap-1 p-0.5 bg-white/10 rounded-xl overflow-x-auto scrollbar-none max-w-[calc(100%-40px)]">
-                <button
-                  type="button"
-                  onClick={() => setMobileDrawerTab('servers')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
-                    mobileDrawerTab === 'servers'
-                      ? "bg-[#E50914] text-white shadow-sm"
-                      : "text-gray-400 hover:text-white"
-                  )}
-                >
-                  Server
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobileDrawerTab('quality')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
-                    mobileDrawerTab === 'quality'
-                      ? "bg-[#E50914] text-white shadow-sm"
-                      : "text-gray-400 hover:text-white"
-                  )}
-                >
-                  Quality
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobileDrawerTab('audio')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
-                    mobileDrawerTab === 'audio'
-                      ? "bg-[#E50914] text-white shadow-sm"
-                      : "text-gray-400 hover:text-white"
-                  )}
-                >
-                  Audio ({activeLanguage || 'Default'})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobileDrawerTab('subtitles')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
-                    mobileDrawerTab === 'subtitles'
-                      ? "bg-[#E50914] text-white shadow-sm"
-                      : "text-gray-400 hover:text-white"
-                  )}
-                >
-                  Subs ({activeSubtitleId === 'off' ? 'Off' : 'On'})
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {mobileDrawerTab === 'subtitles' && (
+              {/* Header Row with Tabs: Server | Quality | Audio | Subtitles */}
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-white/10 shrink-0">
+                <div className="flex items-center gap-1.5 p-1 bg-white/10 rounded-xl overflow-x-auto scrollbar-none max-w-[calc(100%-40px)]">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-[11px] text-zinc-300 hover:text-white flex items-center gap-1 px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 cursor-pointer"
-                    title="Upload Subtitle"
+                    onClick={() => setMobileDrawerTab('servers')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
+                      mobileDrawerTab === 'servers'
+                        ? "bg-[#E50914] text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
+                    )}
                   >
-                    <IoCloudUploadOutline size={13} />
-                    <span>Upload</span>
+                    Server
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowMobileDrawer(false)}
-                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
-                  aria-label="Close"
-                >
-                  <IoClose size={16} />
-                </button>
-              </div>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileDrawerTab('quality')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
+                      mobileDrawerTab === 'quality'
+                        ? "bg-[#E50914] text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
+                    )}
+                  >
+                    Quality
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileDrawerTab('audio')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
+                      mobileDrawerTab === 'audio'
+                        ? "bg-[#E50914] text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
+                    )}
+                  >
+                    Audio ({activeLanguage || 'Default'})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileDrawerTab('subtitles')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
+                      mobileDrawerTab === 'subtitles'
+                        ? "bg-[#E50914] text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
+                    )}
+                  >
+                    Subs ({activeSubtitleId === 'off' ? 'Off' : 'On'})
+                  </button>
+                </div>
 
-            {/* Tab: Server */}
-            {mobileDrawerTab === 'servers' && (
-              <div className="space-y-1 overflow-y-auto max-h-[250px] pr-0.5">
-                {availableServers.length > 0 ? (
-                  availableServers.map((server) => {
-                    const isActive =
-                      server.streams.some((s) => s.link === selectedStream?.link) ||
-                      (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+                <div className="flex items-center gap-2">
+                  {mobileDrawerTab === 'subtitles' && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[11px] text-zinc-300 hover:text-white flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 cursor-pointer"
+                      title="Upload Subtitle"
+                    >
+                      <IoCloudUploadOutline size={14} />
+                      <span>Upload</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileDrawer(false)}
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
+                    aria-label="Close"
+                  >
+                    <IoClose size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab: Server */}
+              {mobileDrawerTab === 'servers' && (
+                <div className="space-y-1.5 overflow-y-auto max-h-[50vh] pr-0.5">
+                  {availableServers.length > 0 ? (
+                    availableServers.map((server) => {
+                      const isActive =
+                        server.streams.some((s) => s.link === selectedStream?.link) ||
+                        (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+                      return (
+                        <button
+                          key={`mobile-server-${server.id}`}
+                          type="button"
+                          onClick={() => {
+                            handleSelectServerOption(server);
+                            setShowMobileDrawer(false);
+                          }}
+                          className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                            isActive
+                              ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                              : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-4 text-center shrink-0">
+                              {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                            </span>
+                            <span className="text-xs font-medium truncate">{server.name}</span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-2 text-xs text-gray-400 italic">No servers available</div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab: Quality */}
+              {mobileDrawerTab === 'quality' && (
+                <div className="space-y-1.5 overflow-y-auto max-h-[50vh] pr-0.5">
+                  {availableQualities.map((q) => {
+                    const isSelected = selectedQuality === q.key;
                     return (
                       <button
-                        key={`mobile-server-${server.id}`}
+                        key={`mobile-q-${q.key}`}
                         type="button"
                         onClick={() => {
-                          handleSelectServerOption(server);
+                          handleSelectQuality(q.key);
                           setShowMobileDrawer(false);
                         }}
-                        className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                          isSelected
+                            ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                            : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-4 text-center shrink-0">
+                            {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                          </span>
+                          <span className="text-xs font-medium truncate">{q.label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Tab: Audio Languages */}
+              {mobileDrawerTab === 'audio' && (
+                <div className="overflow-y-auto space-y-1.5 pr-0.5 max-h-[50vh]">
+                  {availableLanguages.map((item) => {
+                    const isActive = activeLanguage === item.name;
+                    const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
+                    return (
+                      <button
+                        key={item.name}
+                        type="button"
+                        onClick={() => {
+                          handleSelectLanguage(item.name);
+                        }}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
                           isActive
                             ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
                             : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
@@ -4011,175 +4079,104 @@ export default function NativeWebPlayer({
                           <span className="w-4 text-center shrink-0">
                             {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
                           </span>
-                          <span className="text-xs font-medium truncate">{server.name}</span>
+                          {countryCode ? (
+                            <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                              <img
+                                src={`https://flagcdn.com/w40/${countryCode}.png`}
+                                srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                                width="20"
+                                height="14"
+                                alt={`${item.name} flag`}
+                                className="w-full h-full object-cover select-none"
+                                loading="lazy"
+                              />
+                            </span>
+                          ) : (
+                            <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
+                              {LANGUAGE_FLAGS[item.name] || '🌐'}
+                            </span>
+                          )}
+                          <span className="text-xs font-medium truncate">{item.name}</span>
                         </div>
                       </button>
                     );
-                  })
-                ) : (
-                  <div className="px-3 py-2 text-xs text-gray-400 italic">No servers available</div>
-                )}
-              </div>
-            )}
+                  })}
+                </div>
+              )}
 
-            {/* Tab: Quality */}
-            {mobileDrawerTab === 'quality' && (
-              <div className="space-y-1 overflow-y-auto max-h-[250px] pr-0.5">
-                {availableQualities.map((q) => {
-                  const isSelected = selectedQuality === q.key;
-                  return (
-                    <button
-                      key={`mobile-q-${q.key}`}
-                      type="button"
-                      onClick={() => {
-                        handleSelectQuality(q.key);
-                        setShowMobileDrawer(false);
-                      }}
-                      className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                        isSelected
-                          ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                          : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="w-4 text-center shrink-0">
-                          {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                        </span>
-                        <span className="text-xs font-medium truncate">{q.label}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+              {/* Tab: Subtitles */}
+              {mobileDrawerTab === 'subtitles' && (
+                <div className="overflow-y-auto space-y-1.5 pr-0.5 max-h-[50vh]">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSubtitle('off')}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                      activeSubtitleId === 'off'
+                        ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                        : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-4 text-center shrink-0">
+                        {activeSubtitleId === 'off' && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                      </span>
+                      <span className="text-xs font-medium">Off</span>
+                    </div>
+                  </button>
 
-            {/* Tab: Audio Languages */}
-            {mobileDrawerTab === 'audio' && (
-              <div className="overflow-y-auto space-y-1 pr-0.5 max-h-[220px]">
-                {availableLanguages.map((item) => {
-                  const isActive = activeLanguage === item.name;
-                  const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
-                  return (
-                    <button
-                      key={item.name}
-                      type="button"
-                      onClick={() => {
-                        handleSelectLanguage(item.name);
-                      }}
-                      className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                        isActive
-                          ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                          : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="w-4 text-center shrink-0">
-                          {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                        </span>
-                        {countryCode ? (
-                          <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
-                            <img
-                              src={`https://flagcdn.com/w40/${countryCode}.png`}
-                              srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
-                              width="20"
-                              height="14"
-                              alt={`${item.name} flag`}
-                              className="w-full h-full object-cover select-none"
-                              loading="lazy"
-                            />
+                  {availableSubtitles.map((sub) => {
+                    const isActive = activeSubtitleId === sub.id;
+                    const { countryCode, langCode } = getSubtitleMeta(sub);
+                    return (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        onClick={() => handleSelectSubtitle(sub.id)}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                          isActive
+                            ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                            : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-4 text-center shrink-0">
+                            {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
                           </span>
-                        ) : (
-                          <span className="w-5 h-3.5 shrink-0 inline-flex items-center justify-center text-xs select-none">
-                            {LANGUAGE_FLAGS[item.name] || '🌐'}
-                          </span>
-                        )}
-                        <div className="truncate min-w-0">
-                          <span className="text-xs block font-medium truncate">{item.name}</span>
-                          <span className="text-[9px] text-gray-400 block truncate leading-none">
-                            {item.name === originalLanguage ? 'Original Audio' : `${item.count} sources`}
-                          </span>
+                          {countryCode && (
+                            <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
+                              <img
+                                src={`https://flagcdn.com/w40/${countryCode}.png`}
+                                srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
+                                width="20"
+                                height="14"
+                                alt="sub flag"
+                                className="w-full h-full object-cover select-none"
+                                loading="lazy"
+                              />
+                            </span>
+                          )}
+                          <span className="text-xs font-medium truncate">{sub.title}</span>
                         </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Tab: Subtitles */}
-            {mobileDrawerTab === 'subtitles' && (
-              <div className="overflow-y-auto space-y-1 pr-0.5 max-h-[220px]">
-                {/* Off Option */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectSubtitle('off')}
-                  className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                    activeSubtitleId === 'off'
-                      ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                      : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="w-4 text-center shrink-0">
-                      {activeSubtitleId === 'off' && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                    </span>
-                    <span className="text-xs font-medium">Off</span>
-                  </div>
-                </button>
-
-                {/* Subtitles list */}
-                {availableSubtitles.map((sub) => {
-                  const isActive = activeSubtitleId === sub.id;
-                  const { countryCode, langCode } = getSubtitleMeta(sub);
-                  return (
-                    <button
-                      key={sub.id}
-                      type="button"
-                      onClick={() => handleSelectSubtitle(sub.id)}
-                      className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                        isActive
-                          ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                          : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="w-4 text-center shrink-0">
-                          {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                        </span>
-                        {countryCode && (
-                          <span className="w-5 h-3.5 rounded-[3px] overflow-hidden shrink-0 inline-flex items-center justify-center shadow-sm border border-white/10 bg-black/40">
-                            <img
-                              src={`https://flagcdn.com/w40/${countryCode}.png`}
-                              srcSet={`https://flagcdn.com/w80/${countryCode}.png 2x`}
-                              width="20"
-                              height="14"
-                              alt="sub flag"
-                              className="w-full h-full object-cover select-none"
-                              loading="lazy"
-                            />
+                        {langCode && (
+                          <span className="text-[10px] text-gray-400 uppercase font-mono ml-2 shrink-0">
+                            {langCode}
                           </span>
                         )}
-                        <span className="text-xs font-medium truncate">{sub.title}</span>
-                      </div>
-                      {langCode && (
-                        <span className="text-[10px] text-gray-400 uppercase font-mono ml-2 shrink-0">
-                          {langCode}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
 
-                {availableSubtitles.length === 0 && (
-                  <div className="text-xs text-gray-400 italic py-6 text-center">
-                    No subtitles available for this stream
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+                  {availableSubtitles.length === 0 && (
+                    <div className="text-xs text-gray-400 italic py-6 text-center">
+                      No subtitles available for this stream
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>,
+          document.fullscreenElement || document.body
+        )}
 
       {/* 9. Watch Party Modal */}
       <WatchPartyModal

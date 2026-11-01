@@ -1589,27 +1589,45 @@ export default function NativeWebPlayer({
           params.append('lang', activeLanguage.toLowerCase());
         }
 
-        const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
-        const targetUrl = `${providerApiBase}/api/provider/resolve?${params.toString()}`;
+        const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
+        const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+        const targetUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
 
-        let res: Response;
+        let data: any = null;
+
+        // 1. Try Primary Provider (Cloudflare Worker Edge - SnapFlix Fast)
         try {
-          res = await fetch(targetUrl);
-          if (!res.ok && res.status >= 500) {
-            await new Promise((r) => setTimeout(r, 1500));
-            res = await fetch(targetUrl);
+          const res = await fetch(targetUrl);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && Array.isArray(json.results) && json.results.length > 0) {
+              data = json;
+            }
           }
-        } catch (initialErr) {
-          await new Promise((r) => setTimeout(r, 1500));
-          res = await fetch(targetUrl);
+        } catch (primaryErr) {
+          console.warn('[SnapFlix-Web] Primary provider fetch failed, attempting secondary tier:', primaryErr);
         }
 
-        const data = await res.json();
+        // 2. If Primary Provider returned no streams, immediately try Secondary Provider (Oracle VPS - SnapFlix Vidy Multi-Audio)
+        if (!data || !data.results || data.results.length === 0) {
+          try {
+            const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
+            const secRes = await fetch(secUrl);
+            if (secRes.ok) {
+              const secJson = await secRes.json();
+              if (secJson.success && Array.isArray(secJson.results) && secJson.results.length > 0) {
+                data = secJson;
+              }
+            }
+          } catch (secErr) {
+            console.warn('[SnapFlix-Web] Secondary provider fetch failed:', secErr);
+          }
+        }
 
         if (!active) return;
 
-        if (!data.success || !data.results || data.results.length === 0) {
-          throw new Error(data.message || 'No stream available from active providers.');
+        if (!data || !data.success || !data.results || data.results.length === 0) {
+          throw new Error('No stream available from active providers.');
         }
 
         setProviderResults(data.results);
@@ -1663,8 +1681,8 @@ export default function NativeWebPlayer({
           try {
             const bgParams = new URLSearchParams(params);
             bgParams.append('refresh', 'true');
-            const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
-            const bgRes = await fetch(`${providerApiBase}/api/provider/resolve?${bgParams.toString()}`);
+            const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+            const bgRes = await fetch(`${secondaryApiBase}/api/provider/resolve?${bgParams.toString()}`);
             const bgData = await bgRes.json();
             if (active && bgData.success && Array.isArray(bgData.results)) {
               setProviderResults((prev) => {

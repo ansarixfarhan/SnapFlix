@@ -88,6 +88,18 @@ export async function GET(request: NextRequest) {
           .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
     }
 
+    // Elevate cue positions so subtitles do not touch the extreme bottom edge or get obscured
+    text = text.replace(
+      /((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})([^\r\n]*)/g,
+      (_match, timing, settings) => {
+        const s = (settings || '').trim();
+        if (!s.includes('line:')) {
+          return `${timing} ${s ? s + ' ' : ''}line:84%`.trim();
+        }
+        return `${timing} ${s}`.trim();
+      }
+    );
+
     return new NextResponse(text, {
       status: 200,
       headers: {

@@ -1047,24 +1047,67 @@ export default function NativeWebPlayer({
     }
   }, []);
 
-  // Suppress dynamic subtitle tracks if activeSubtitleId is 'off'
+  // Suppress dynamic subtitle tracks if activeSubtitleId is 'off', and lift cues from bottom edge
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !video.textTracks) return;
+
+    const liftCues = (track: TextTrack) => {
+      if (!track.activeCues) return;
+      for (let i = 0; i < track.activeCues.length; i++) {
+        const cue = track.activeCues[i] as any;
+        if (cue) {
+          // If cue is positioned at default bottom edge (auto / -1 / 100), elevate it cleanly
+          if (cue.line === 'auto' || cue.line === -1 || cue.line === 100 || cue.line === undefined) {
+            cue.snapToLines = false;
+            cue.line = showControls ? 78 : 84;
+          }
+        }
+      }
+    };
+
+    const attachCueListener = (track: TextTrack) => {
+      track.removeEventListener('cuechange', (track as any)._snapflixCueHandler);
+      const handler = () => {
+        if (activeSubtitleIdRef.current === 'off') {
+          try {
+            track.mode = 'disabled';
+          } catch (e) {}
+        } else {
+          liftCues(track);
+        }
+      };
+      (track as any)._snapflixCueHandler = handler;
+      track.addEventListener('cuechange', handler);
+    };
+
+    for (let i = 0; i < video.textTracks.length; i++) {
+      attachCueListener(video.textTracks[i]);
+    }
 
     const handleTrackAdded = (e: TrackEvent) => {
       if (activeSubtitleIdRef.current === 'off' && e.track) {
         try {
           e.track.mode = 'disabled';
         } catch (err) {}
+      } else if (e.track) {
+        attachCueListener(e.track);
       }
     };
 
     video.textTracks.addEventListener('addtrack', handleTrackAdded);
     return () => {
       video.textTracks.removeEventListener('addtrack', handleTrackAdded);
+      if (video.textTracks) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const t = video.textTracks[i] as any;
+          if (t._snapflixCueHandler) {
+            t.removeEventListener('cuechange', t._snapflixCueHandler);
+          }
+        }
+      }
     };
-  }, []);
+  }, [showControls]);
 
   // Revoke any active blob URL on unmount
   useEffect(() => {
@@ -1768,6 +1811,18 @@ export default function NativeWebPlayer({
           .replace(/\r\n|\r/g, '\n')
           .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
       }
+
+      // Elevate cue position so subtitles sit comfortably elevated above bottom edge
+      content = content.replace(
+        /((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})([^\r\n]*)/g,
+        (_match, timing, settings) => {
+          const s = (settings || '').trim();
+          if (!s.includes('line:')) {
+            return `${timing} ${s ? s + ' ' : ''}line:84%`.trim();
+          }
+          return `${timing} ${s}`.trim();
+        }
+      );
 
       const blob = new Blob([content], { type: 'text/vtt;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -4340,6 +4395,19 @@ export default function NativeWebPlayer({
           color: ${subColor === 'yellow' ? '#fde047' : '#ffffff'} !important;
           background-color: ${subBg === 'transparent' ? 'transparent' : 'rgba(0, 0, 0, 0.75)'} !important;
           text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9) !important;
+          line-height: 1.4 !important;
+        }
+
+        /* Lift subtitle track container comfortably above bottom edge & player controls */
+        video::-webkit-media-text-track-container {
+          bottom: ${showControls ? '80px' : '44px'} !important;
+          transform: translateY(${showControls ? '-46px' : '-20px'}) !important;
+          transition: transform 0.25s ease, bottom 0.25s ease !important;
+        }
+
+        video::-webkit-media-text-track-display {
+          transform: translateY(${showControls ? '-46px' : '-20px'}) !important;
+          transition: transform 0.25s ease !important;
         }
 
         @keyframes partyFloatUp {

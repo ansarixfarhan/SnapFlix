@@ -1020,6 +1020,7 @@ export default function NativeWebPlayer({
   // Audio & Multi-Track States
   const resumeTimeRef = useRef<number | null>(null);
   const failedStreamLinksRef = useRef<Set<string>>(new Set());
+  const standbyFallbackRef = useRef<{ provider: 'Vidy'; results: any[] } | null>(null);
   const [activeLanguage, setActiveLanguage] = useState<string>('English');
   const [hlsAudioTracks, setHlsAudioTracks] = useState<any[]>([]);
   const [currentHlsAudioTrack, setCurrentHlsAudioTrack] = useState<number>(-1);
@@ -1601,7 +1602,7 @@ export default function NativeWebPlayer({
       }
     }
 
-    // 2. Secondary fallback: any other playable stream that hasn't failed yet
+    // 2. Secondary fallback: any other playable stream in current provider that hasn't failed yet
     for (const prov of providerResults) {
       const fallbackMatch = prov.streams.find((s) => {
         return (
@@ -1616,6 +1617,42 @@ export default function NativeWebPlayer({
         resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
         setSelectedStream({ ...fallbackMatch, providerName: prov.providerName });
         return true;
+      }
+    }
+
+    // 3. Standby Fallback (Vidy): If primary provider (Vidly) has exhausted all streams, activate Vidy!
+    if (standbyFallbackRef.current?.results?.length) {
+      console.log('[Player] Primary streams exhausted. Activating Standby Fallback (Vidy)...');
+      const fallbackResults = standbyFallbackRef.current.results;
+      standbyFallbackRef.current = null; // Clear so we don't re-enter in a loop
+      setProviderResults(fallbackResults);
+
+      // Try matching active language in Vidy
+      for (const prov of fallbackResults) {
+        const langMatch = prov.streams.find((s: StreamItem) => {
+          if (!isPlayableStream(s) || failedStreamLinksRef.current.has(s.link)) return false;
+          const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
+          return langs.includes(activeLanguage);
+        });
+        if (langMatch) {
+          console.log(`[Player] Fallback Vidy stream selected with language ${activeLanguage}: ${langMatch.server}`);
+          resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
+          setSelectedStream({ ...langMatch, providerName: prov.providerName });
+          return true;
+        }
+      }
+
+      // Fallback to any playable Vidy stream
+      for (const prov of fallbackResults) {
+        const anyMatch = prov.streams.find((s: StreamItem) => {
+          return isPlayableStream(s) && !failedStreamLinksRef.current.has(s.link);
+        });
+        if (anyMatch) {
+          console.log(`[Player] Fallback Vidy stream selected: ${anyMatch.server}`);
+          resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
+          setSelectedStream({ ...anyMatch, providerName: prov.providerName });
+          return true;
+        }
       }
     }
 
@@ -1665,128 +1702,86 @@ export default function NativeWebPlayer({
         const primaryUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
         const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
 
-        const combinedResults: any[] = [];
+        // Reset standby fallback for this new media load
+        standbyFallbackRef.current = null;
 
-        // Fetch both Primary (Cloudflare Worker Edge) and Secondary (Oracle VPS - Vidy Multi-Audio) in parallel
-        try {
-          const [primarySettled, secSettled] = await Promise.allSettled([
-            fetch(primaryUrl).then(async (r) => (r.ok ? r.json() : null)),
-            fetch(secUrl).then(async (r) => (r.ok ? r.json() : null)),
-          ]);
+        // Parallel initiation: Fetch Primary (Vidly) and Standby (Vidy) simultaneously
+        const primaryPromise = fetch(primaryUrl)
+          .then(async (r) => (r.ok ? r.json() : null))
+          .catch((err) => {
+            console.warn('[Player] Vidly resolve network error:', err);
+            return null;
+          });
 
-          const primaryData = primarySettled.status === 'fulfilled' ? primarySettled.value : null;
-          const secData = secSettled.status === 'fulfilled' ? secSettled.value : null;
+        const secPromise = fetch(secUrl)
+          .then(async (r) => (r.ok ? r.json() : null))
+          .catch((err) => {
+            console.warn('[Player] Vidy standby network error:', err);
+            return null;
+          });
 
-          if (primaryData?.success && Array.isArray(primaryData.results)) {
-            combinedResults.push(...primaryData.results);
+        // Pre-warm Vidy standby in memory (passive background, does NOT touch active UI or player state)
+        secPromise.then((secData) => {
+          if (active && secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
+            standbyFallbackRef.current = { provider: 'Vidy', results: secData.results };
+            console.log('[Player] Standby fallback (Vidy) pre-warmed & cached in memory');
           }
-          if (secData?.success && Array.isArray(secData.results)) {
-            combinedResults.push(...secData.results);
+        });
+
+        // 1. Await Vidly (Primary Edge)
+        const primaryData = await primaryPromise;
+        let chosenResults: any[] = [];
+
+        const hasValidPrimary =
+          primaryData?.success &&
+          Array.isArray(primaryData.results) &&
+          primaryData.results.some((p: any) => p.streams?.some((s: StreamItem) => isPlayableStream(s)));
+
+        if (hasValidPrimary) {
+          console.log('[Player] Primary provider (Vidly) active with master multi-audio stream');
+          chosenResults = primaryData.results;
+        } else {
+          console.warn('[Player] Vidly returned no playable streams. Falling back to Vidy immediately...');
+          const secData = await secPromise;
+          if (secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
+            chosenResults = secData.results;
           }
-        } catch (fetchErr) {
-          console.warn('[SnapFlix-Web] Error resolving providers in parallel:', fetchErr);
         }
 
         if (!active) return;
 
-        if (combinedResults.length === 0) {
+        if (chosenResults.length === 0) {
           throw new Error('No stream available from active providers.');
         }
 
-        setProviderResults(combinedResults);
+        // Set providerResults to the active provider ONLY (never mixed!)
+        setProviderResults(chosenResults);
 
         // Pick the best streamable stream (m3u8 or mp4) - strictly ignore mkv
         let chosen: StreamItem | null = null;
 
-        // 1. Check for a playable stream with Hindi audio if available
-        for (const prov of combinedResults) {
-          const match = prov.streams.find((s: StreamItem) => {
-            if (!isPlayableStream(s)) return false;
-            const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
-            return langs.includes('Hindi');
-          });
+        for (const prov of chosenResults) {
+          const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
           if (match) {
-            chosen = { ...match, providerName: prov.providerName };
-            setActiveLanguage('Hindi');
+            const streamChoice = { ...match, providerName: prov.providerName };
+            chosen = streamChoice;
+            const initialLangs = getStreamAudioLanguages(streamChoice, prov.infoTitle, originalLanguage);
+            setActiveLanguage(initialLangs[0] || 'English');
             break;
           }
         }
 
-        // 2. Prefer SnapFlix Vidy (dedicated 1080p HLS) if available for pristine playback
-        if (!chosen) {
-          const vidyProv = combinedResults.find((p) => p.providerValue === 'snapflix-vidy');
-          if (vidyProv?.streams?.length) {
-            const match = vidyProv.streams.find((s: StreamItem) => isPlayableStream(s));
-            if (match) {
-              chosen = { ...match, providerName: vidyProv.providerName };
-              const initialLangs = getStreamAudioLanguages(match, vidyProv.infoTitle, originalLanguage);
-              setActiveLanguage(initialLangs[0] || 'English');
-            }
-          }
-        }
-
-        // 3. Fallback to first playable stream across all providers
-        if (!chosen) {
-          for (const prov of combinedResults) {
-            const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
-            if (match) {
-              const streamChoice = { ...match, providerName: prov.providerName };
-              chosen = streamChoice;
-              const initialLangs = getStreamAudioLanguages(streamChoice, prov.infoTitle, originalLanguage);
-              setActiveLanguage(initialLangs[0] || 'English');
-              break;
-            }
-          }
-        }
-
-        if (!chosen && combinedResults[0]?.streams?.length > 0) {
+        if (!chosen && chosenResults[0]?.streams?.length > 0) {
           const fallbackChoice = {
-            ...combinedResults[0].streams[0],
-            providerName: combinedResults[0].providerName,
+            ...chosenResults[0].streams[0],
+            providerName: chosenResults[0].providerName,
           };
           chosen = fallbackChoice;
-          const initialLangs = getStreamAudioLanguages(fallbackChoice, combinedResults[0].infoTitle, originalLanguage);
+          const initialLangs = getStreamAudioLanguages(fallbackChoice, chosenResults[0].infoTitle, originalLanguage);
           setActiveLanguage(initialLangs[0] || 'English');
         }
 
         setSelectedStream(chosen);
-
-        // Background progressive resolver: continues testing and resolving remaining providers in the background while video is playing
-        setTimeout(async () => {
-          if (!active) return;
-          try {
-            const bgParams = new URLSearchParams(params);
-            bgParams.append('refresh', 'true');
-            const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
-            const bgRes = await fetch(`${secondaryApiBase}/api/provider/resolve?${bgParams.toString()}`);
-            const bgData = await bgRes.json();
-            if (active && bgData.success && Array.isArray(bgData.results)) {
-              setProviderResults((prev) => {
-                const merged = [...prev];
-                for (const newP of bgData.results) {
-                  const existingIdx = merged.findIndex((m) => m.providerValue === newP.providerValue);
-                  if (existingIdx === -1) {
-                    merged.push(newP);
-                  } else {
-                    const existingStreams = merged[existingIdx].streams;
-                    const added = newP.streams.filter(
-                      (ns: any) => !existingStreams.some((es: any) => es.link === ns.link)
-                    );
-                    if (added.length > 0) {
-                      merged[existingIdx] = {
-                        ...merged[existingIdx],
-                        streams: [...existingStreams, ...added],
-                      };
-                    }
-                  }
-                }
-                return merged;
-              });
-            }
-          } catch (bgErr) {
-            console.warn('[Player] Background provider resolution check:', bgErr);
-          }
-        }, 3000);
       } catch (err: any) {
         if (active) {
           setError(err?.message || 'Failed to discover provider streams.');

@@ -1018,9 +1018,63 @@ export default function NativeWebPlayer({
   const [hlsSubtitles, setHlsSubtitles] = useState<any[]>([]);
   const [uploadedSubtitles, setUploadedSubtitles] = useState<Array<{ id: string; title: string; uri: string; language?: string }>>([]);
   const [activeSubtitleId, setActiveSubtitleId] = useState<string>('off');
+  const activeSubtitleIdRef = useRef<string>('off');
+  const activeSubtitleBlobUrlRef = useRef<string | null>(null);
   const [activeSubtitleUri, setActiveSubtitleUri] = useState<string | null>(null);
   const [activeSubtitleLang, setActiveSubtitleLang] = useState<string>('en');
   const [activeSubtitleLabel, setActiveSubtitleLabel] = useState<string>('Subtitles');
+
+  // Keep ref strictly synced to prevent closure staleness in HLS and Video callbacks
+  useEffect(() => {
+    activeSubtitleIdRef.current = activeSubtitleId;
+  }, [activeSubtitleId]);
+
+  // Robust Subtitle Disabling helper across both Hls.js and native textTracks
+  const disableAllSubtitles = useCallback((media?: HTMLMediaElement | null, hls?: Hls | null) => {
+    if (hls) {
+      try {
+        hls.subtitleTrack = -1;
+        hls.subtitleDisplay = false;
+      } catch (e) {}
+    }
+    const el = media || videoRef.current;
+    if (el?.textTracks) {
+      for (let i = 0; i < el.textTracks.length; i++) {
+        try {
+          el.textTracks[i].mode = 'disabled';
+        } catch (e) {}
+      }
+    }
+  }, []);
+
+  // Suppress dynamic subtitle tracks if activeSubtitleId is 'off'
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !video.textTracks) return;
+
+    const handleTrackAdded = (e: TrackEvent) => {
+      if (activeSubtitleIdRef.current === 'off' && e.track) {
+        try {
+          e.track.mode = 'disabled';
+        } catch (err) {}
+      }
+    };
+
+    video.textTracks.addEventListener('addtrack', handleTrackAdded);
+    return () => {
+      video.textTracks.removeEventListener('addtrack', handleTrackAdded);
+    };
+  }, []);
+
+  // Revoke any active blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (activeSubtitleBlobUrlRef.current) {
+        URL.revokeObjectURL(activeSubtitleBlobUrlRef.current);
+        activeSubtitleBlobUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Subtitle Modal Sub-views ('main' | 'search' | 'appearance')
   const [subModalTab, setSubModalTab] = useState<'main' | 'search' | 'appearance'>('main');
@@ -1555,23 +1609,47 @@ export default function NativeWebPlayer({
     }
   };
 
-  // Aggregated Subtitles across active provider stream + HLS tracks + uploaded tracks
+  // Aggregated Subtitles across active provider stream + all provider streams + HLS tracks + uploaded tracks
   const availableSubtitles = useMemo(() => {
-    const list: Array<{ id: string; title: string; language?: string; uri?: string; hlsIndex?: number }> = [];
+    const list: Array<{ id: string; title: string; language?: string; uri?: string; hlsIndex?: number; headers?: Record<string, string> }> = [];
+    const seenUris = new Set<string>();
 
     // 1. From active provider's stream
     if (selectedStream?.subtitles && Array.isArray(selectedStream.subtitles)) {
       selectedStream.subtitles.forEach((s, idx) => {
+        const u = s.uri;
+        if (u) seenUris.add(u);
         list.push({
-          id: `provider-${idx}-${s.uri || s.language}`,
+          id: `provider-${idx}-${u || s.language}`,
           title: s.title || s.language || `Subtitle ${idx + 1}`,
           language: s.language,
-          uri: s.uri,
+          uri: u,
+          headers: selectedStream.headers,
         });
       });
     }
 
-    // 2. From HLS stream internal tracks
+    // 2. From all other streams in providerResults (e.g. Vidy subtitles when Vidly is active)
+    providerResults.forEach((prov) => {
+      prov.streams?.forEach((s) => {
+        if (s.subtitles && Array.isArray(s.subtitles)) {
+          s.subtitles.forEach((sub, idx) => {
+            if (sub.uri && !seenUris.has(sub.uri)) {
+              seenUris.add(sub.uri);
+              list.push({
+                id: `prov-${prov.providerName}-${idx}-${sub.uri}`,
+                title: sub.title || sub.language || `Subtitle ${list.length + 1}`,
+                language: sub.language,
+                uri: sub.uri,
+                headers: s.headers,
+              });
+            }
+          });
+        }
+      });
+    });
+
+    // 3. From HLS stream internal tracks
     hlsSubtitles.forEach((track, idx) => {
       const name = track.name || track.lang || `Track ${idx + 1}`;
       if (!list.some(s => s.title.toLowerCase() === name.toLowerCase())) {
@@ -1584,27 +1662,24 @@ export default function NativeWebPlayer({
       }
     });
 
-    // 3. User uploaded / searched subtitles
+    // 4. User uploaded / searched subtitles
     uploadedSubtitles.forEach(s => list.push(s));
 
     return list;
-  }, [selectedStream, hlsSubtitles, uploadedSubtitles]);
+  }, [selectedStream, providerResults, hlsSubtitles, uploadedSubtitles]);
 
   // Handle Subtitle Selection
   const handleSelectSubtitle = (subId: string) => {
     setActiveSubtitleId(subId);
+    activeSubtitleIdRef.current = subId;
 
     if (subId === 'off') {
       setActiveSubtitleUri(null);
-      if (hlsRef.current) {
-        hlsRef.current.subtitleTrack = -1;
-        hlsRef.current.subtitleDisplay = false;
+      if (activeSubtitleBlobUrlRef.current) {
+        URL.revokeObjectURL(activeSubtitleBlobUrlRef.current);
+        activeSubtitleBlobUrlRef.current = null;
       }
-      if (videoRef.current) {
-        for (let i = 0; i < videoRef.current.textTracks.length; i++) {
-          videoRef.current.textTracks[i].mode = 'disabled';
-        }
-      }
+      disableAllSubtitles(videoRef.current, hlsRef.current);
       return;
     }
 
@@ -1612,27 +1687,69 @@ export default function NativeWebPlayer({
     if (!targetSub) return;
 
     if (targetSub.hlsIndex !== undefined && hlsRef.current) {
+      if (activeSubtitleBlobUrlRef.current) {
+        URL.revokeObjectURL(activeSubtitleBlobUrlRef.current);
+        activeSubtitleBlobUrlRef.current = null;
+      }
       setActiveSubtitleUri(null);
-      hlsRef.current.subtitleTrack = targetSub.hlsIndex;
+
+      if (videoRef.current?.textTracks) {
+        for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+          if (i !== targetSub.hlsIndex) {
+            videoRef.current.textTracks[i].mode = 'disabled';
+          }
+        }
+      }
+
       hlsRef.current.subtitleDisplay = true;
+      hlsRef.current.subtitleTrack = targetSub.hlsIndex;
+
+      if (videoRef.current?.textTracks && videoRef.current.textTracks[targetSub.hlsIndex]) {
+        videoRef.current.textTracks[targetSub.hlsIndex].mode = 'showing';
+      }
     } else if (targetSub.uri) {
       if (hlsRef.current) {
         hlsRef.current.subtitleTrack = -1;
         hlsRef.current.subtitleDisplay = false;
       }
-      let playableUri = targetSub.uri;
-      if (playableUri.includes('.opensubtitles.org') || playableUri.endsWith('.srt') || playableUri.endsWith('.gz')) {
-        playableUri = `/api/subtitles/download?url=${encodeURIComponent(targetSub.uri)}`;
+      if (videoRef.current?.textTracks) {
+        for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+          videoRef.current.textTracks[i].mode = 'disabled';
+        }
       }
-      setActiveSubtitleUri(playableUri);
+
       setActiveSubtitleLang(targetSub.language || 'en');
       setActiveSubtitleLabel(targetSub.title);
 
-      setTimeout(() => {
-        if (videoRef.current && videoRef.current.textTracks.length > 0) {
-          videoRef.current.textTracks[0].mode = 'showing';
-        }
-      }, 100);
+      if (targetSub.uri.startsWith('blob:')) {
+        setActiveSubtitleUri(targetSub.uri);
+        return;
+      }
+
+      const headersObj = targetSub.headers || selectedStream?.headers || {};
+      const headersParam = Object.keys(headersObj).length > 0
+        ? `&headers=${encodeURIComponent(JSON.stringify(headersObj))}`
+        : '';
+      const downloadProxyUrl = `/api/subtitles/download?url=${encodeURIComponent(targetSub.uri)}${headersParam}`;
+
+      if (activeSubtitleBlobUrlRef.current) {
+        URL.revokeObjectURL(activeSubtitleBlobUrlRef.current);
+        activeSubtitleBlobUrlRef.current = null;
+      }
+
+      fetch(downloadProxyUrl)
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`Subtitle download failed with status ${res.status}`);
+          const vttText = await res.text();
+          const blob = new Blob([vttText], { type: 'text/vtt;charset=utf-8' });
+          const blobUrl = URL.createObjectURL(blob);
+          activeSubtitleBlobUrlRef.current = blobUrl;
+          setActiveSubtitleUri(blobUrl);
+        })
+        .catch((err) => {
+          console.warn('[Player] Subtitle blob proxy fetch failed, falling back to direct proxy URL:', err);
+          setActiveSubtitleUri(downloadProxyUrl);
+        });
     }
   };
 
@@ -1649,10 +1766,10 @@ export default function NativeWebPlayer({
       if (file.name.endsWith('.srt')) {
         content = 'WEBVTT\n\n' + content
           .replace(/\r\n|\r/g, '\n')
-          .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+          .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
       }
 
-      const blob = new Blob([content], { type: 'text/vtt' });
+      const blob = new Blob([content], { type: 'text/vtt;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const newSub = {
         id: `upload-${Date.now()}`,
@@ -2009,6 +2126,10 @@ export default function NativeWebPlayer({
           levelLoadingTimeOut: 15000,
         });
         hlsRef.current = hls;
+        if (activeSubtitleIdRef.current === 'off') {
+          hls.subtitleDisplay = false;
+          hls.subtitleTrack = -1;
+        }
 
         hls.loadSource(streamUrl);
         hls.attachMedia(videoRef.current);
@@ -2051,6 +2172,9 @@ export default function NativeWebPlayer({
           if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
             setHlsSubtitles(hls.subtitleTracks);
           }
+          if (activeSubtitleIdRef.current === 'off') {
+            disableAllSubtitles(videoRef.current, hls);
+          }
         });
 
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
@@ -2089,6 +2213,9 @@ export default function NativeWebPlayer({
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_event, data) => {
           if (data?.subtitleTracks) {
             setHlsSubtitles(data.subtitleTracks);
+            if (activeSubtitleIdRef.current === 'off') {
+              disableAllSubtitles(videoRef.current, hls);
+            }
           }
         });
 
@@ -2132,6 +2259,9 @@ export default function NativeWebPlayer({
         });
       } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
         videoRef.current.src = streamUrl;
+        if (activeSubtitleIdRef.current === 'off') {
+          disableAllSubtitles(videoRef.current);
+        }
         if (seekTo > 0) {
           const handleLoadedMetadata = () => {
             if (videoRef.current) {
@@ -2147,6 +2277,9 @@ export default function NativeWebPlayer({
     } else {
       const videoEl = videoRef.current;
       videoEl.src = streamUrl;
+      if (activeSubtitleIdRef.current === 'off') {
+        disableAllSubtitles(videoEl);
+      }
       if (seekTo > 0) {
         const handleLoadedMetadata = () => {
           if (videoRef.current) {
@@ -2754,6 +2887,20 @@ export default function NativeWebPlayer({
             srcLang={activeSubtitleLang || 'en'}
             label={activeSubtitleLabel || 'Subtitle'}
             default
+            onLoad={(e) => {
+              const el = e.currentTarget;
+              if (el && el.track) {
+                el.track.mode = 'showing';
+              }
+              if (videoRef.current?.textTracks) {
+                for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+                  const t = videoRef.current.textTracks[i];
+                  if (t !== el.track) {
+                    t.mode = 'disabled';
+                  }
+                }
+              }
+            }}
           />
         )}
       </video>
@@ -4187,6 +4334,7 @@ export default function NativeWebPlayer({
 
       {/* Global CSS for native video subtitle cue styling & party reactions */}
       <style jsx global>{`
+        video::cue,
         ::cue {
           font-size: ${subFontSize === 'small' ? '14px' : subFontSize === 'large' ? '22px' : '18px'} !important;
           color: ${subColor === 'yellow' ? '#fde047' : '#ffffff'} !important;

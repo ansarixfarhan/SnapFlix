@@ -1589,8 +1589,8 @@ export default function NativeWebPlayer({
           params.append('lang', activeLanguage.toLowerCase());
         }
 
-        const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
-        const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+        const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
+        const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
         const primaryUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
         const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
@@ -1687,7 +1687,7 @@ export default function NativeWebPlayer({
           try {
             const bgParams = new URLSearchParams(params);
             bgParams.append('refresh', 'true');
-            const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+            const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
             const bgRes = await fetch(`${secondaryApiBase}/api/provider/resolve?${bgParams.toString()}`);
             const bgData = await bgRes.json();
             if (active && bgData.success && Array.isArray(bgData.results)) {
@@ -1739,7 +1739,7 @@ export default function NativeWebPlayer({
       return stream.link;
     }
 
-    const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+    const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
     // streamrip.fun and rousav.tech require proxying to bypass CORS and hotlink filters (Oracle VPS handles both cleanly)
     if (stream.link.includes('streamrip.fun') || stream.link.includes('rousav.tech')) {
@@ -1907,7 +1907,7 @@ export default function NativeWebPlayer({
               case Hls.ErrorTypes.NETWORK_ERROR:
                 // If direct stream failed, attempt proxy fallback once via dedicated VPS proxy
                 if (hls.url && !hls.url.includes('proxy-stream') && !hls.url.includes('/api/proxy')) {
-                  const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+                  const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
                   const proxyUrl = `${vpsApiBase}/api/proxy/stream?url=${encodeURIComponent(
                     selectedStream.link

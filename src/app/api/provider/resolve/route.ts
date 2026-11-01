@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const PRIMARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
-const SECONDARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+const PRIMARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
+const SECONDARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

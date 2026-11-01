@@ -23,8 +23,8 @@
     "enabled": true
   },
   "vars": {
-    "NEXT_PUBLIC_BACKEND_URL": "https://api.snapflix.indevs.in",
-    "NEXT_PUBLIC_BACKEND_URL_TIER2": "https://api1.snapflix.indevs.in",
+    "NEXT_PUBLIC_BACKEND_URL": "https://vidly.snapflix.indevs.in",
+    "NEXT_PUBLIC_BACKEND_URL_TIER2": "https://vidy.snapflix.indevs.in",
     "NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION": "atlIepm5DvSugRHSudy3EebPGch2CztkA_0MghNMTHY",
     "NEXT_PUBLIC_GA_MEASUREMENT_ID": "G-5E6KQ2LRZ3"
   },

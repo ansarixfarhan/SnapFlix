@@ -1743,7 +1743,7 @@ export default function NativeWebPlayer({
 
     // streamrip.fun and rousav.tech require proxying to bypass CORS and hotlink filters (Oracle VPS handles both cleanly)
     if (stream.link.includes('streamrip.fun') || stream.link.includes('rousav.tech')) {
-      return `${vpsApiBase}/api/proxy/stream?url=${encodeURIComponent(stream.link)}`;
+      return `${vpsApiBase}/api/proxy/stream?v=2&url=${encodeURIComponent(stream.link)}`;
     }
 
     const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
@@ -1753,7 +1753,7 @@ export default function NativeWebPlayer({
     // Streams without custom headers play directly in the browser to avoid server bottlenecks.
     if (hasHeaders) {
       const headersJson = JSON.stringify(stream.headers || {});
-      return `${vpsApiBase}/api/proxy/stream?url=${encodeURIComponent(
+      return `${vpsApiBase}/api/proxy/stream?v=2&url=${encodeURIComponent(
         stream.link
       )}&headers=${encodeURIComponent(headersJson)}`;
     }
@@ -1909,7 +1909,7 @@ export default function NativeWebPlayer({
                 if (hls.url && !hls.url.includes('proxy-stream') && !hls.url.includes('/api/proxy')) {
                   const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
-                  const proxyUrl = `${vpsApiBase}/api/proxy/stream?url=${encodeURIComponent(
+                  const proxyUrl = `${vpsApiBase}/api/proxy/stream?v=2&url=${encodeURIComponent(
                     selectedStream.link
                   )}&headers=${encodeURIComponent(headersJson)}`;
                   console.warn('[Player] Direct stream failed, attempting VPS proxy fallback:', proxyUrl);

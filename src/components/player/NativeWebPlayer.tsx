@@ -3908,7 +3908,7 @@ export default function NativeWebPlayer({
             />
 
             {/* Bottom Sheet Drawer (Slides up from bottom 0) */}
-            <div className="relative z-10 w-full max-h-[85vh] bg-[#121212]/98 backdrop-blur-2xl border-t border-white/15 rounded-t-3xl shadow-[0_-12px_45px_rgba(0,0,0,0.95)] p-4 pb-8 flex flex-col animate-in slide-in-from-bottom duration-300 ease-out text-white">
+            <div className="relative z-10 w-full h-[360px] sm:h-[400px] max-h-[75vh] bg-[#121212]/98 backdrop-blur-2xl border-t border-white/15 rounded-t-3xl shadow-[0_-12px_45px_rgba(0,0,0,0.95)] p-4 pb-6 flex flex-col animate-in slide-in-from-bottom duration-300 ease-out text-white">
               {/* Top Drag Handle */}
               <div className="w-12 h-1.5 rounded-full bg-white/20 mx-auto mb-3 shrink-0" />
 
@@ -3990,7 +3990,7 @@ export default function NativeWebPlayer({
 
               {/* Tab: Server */}
               {mobileDrawerTab === 'servers' && (
-                <div className="space-y-1.5 overflow-y-auto max-h-[50vh] pr-0.5">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5">
                   {availableServers.length > 0 ? (
                     availableServers.map((server) => {
                       const isActive =
@@ -4027,7 +4027,7 @@ export default function NativeWebPlayer({
 
               {/* Tab: Quality */}
               {mobileDrawerTab === 'quality' && (
-                <div className="space-y-1.5 overflow-y-auto max-h-[50vh] pr-0.5">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5">
                   {availableQualities.map((q) => {
                     const isSelected = selectedQuality === q.key;
                     return (
@@ -4058,7 +4058,7 @@ export default function NativeWebPlayer({
 
               {/* Tab: Audio Languages */}
               {mobileDrawerTab === 'audio' && (
-                <div className="overflow-y-auto space-y-1.5 pr-0.5 max-h-[50vh]">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5">
                   {availableLanguages.map((item) => {
                     const isActive = activeLanguage === item.name;
                     const countryCode = LANGUAGE_COUNTRY_CODES[item.name];
@@ -4106,7 +4106,7 @@ export default function NativeWebPlayer({
 
               {/* Tab: Subtitles */}
               {mobileDrawerTab === 'subtitles' && (
-                <div className="overflow-y-auto space-y-1.5 pr-0.5 max-h-[50vh]">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5">
                   <button
                     type="button"
                     onClick={() => handleSelectSubtitle('off')}

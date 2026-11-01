@@ -1,19 +1,34 @@
-PROPRIETARY AND CONFIDENTIAL SOFTWARE LICENSE
+# Proprietary Software License, Terms of Use & Legal Disclaimer
 
-Copyright (c) 2026 SnapFlix, Inc. All Rights Reserved.
+**Copyright (c) 2026 Farhan Ansari. All Rights Reserved.**
 
-NOTICE: All information contained herein is, and remains the property of SnapFlix, Inc.
-and its suppliers, if any. The intellectual and technical concepts contained herein are
-proprietary to SnapFlix, Inc. and may be covered by patents, patents in process, and are
-protected by trade secret or copyright law.
+---
 
-Dissemination of this information or reproduction of this material is strictly forbidden
-unless prior written permission is obtained from SnapFlix, Inc.
+### 1. Ownership & Proprietary Rights
+SnapFlix Web (the "Software") is the exclusive intellectual property and proprietary creation of **Farhan Ansari** ("Owner").
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+All rights, titles, and interests in and to the Software—including without limitation its source code, architecture, algorithms, user interface designs, custom media players, styling, animations, assets, icons, branding, and compiled distributions—are strictly proprietary to the Owner.
+
+### 2. Closed-Source & Terms of Use
+The core SnapFlix software suite is strictly proprietary and private:
+- **No Redistribution:** You may not copy, clone, reproduce, distribute, mirror, publish, sell, rent, lease, or sublicense the codebase or any portion thereof without explicit prior written authorization from Farhan Ansari.
+- **No Derivative Works:** You may not modify, adapt, alter, or create derivative works based upon the Software or its proprietary source code.
+- **No Reverse Engineering:** Decompilation, disassembly, reverse engineering, or extracting the underlying logic, cryptographic keys, or proprietary assets of the Software is strictly prohibited.
+
+### 3. Non-Hosting & Third-Party Content Disclaimer (DMCA & Safe Harbor)
+**SnapFlix operates strictly as a client-side user interface and indexer:**
+- **Zero Content Hosting:** SnapFlix and its Owner do **NOT** host, upload, archive, store, manage, encode, or transmit any video, audio, media files, or copyrighted material on any of their servers or databases.
+- **Third-Party Servers:** All media streams, video segments, subtitles, and external data indexed or accessed through the Software are hosted and served exclusively by independent, third-party internet hosting services over which Farhan Ansari and SnapFlix exercise zero control, ownership, or operational relationship.
+- **Search & Discovery Functionality:** The Software functions solely as a client-side search aggregator and user agent that visualizes publicly available streaming endpoints available across the open internet.
+- **No Affiliation:** SnapFlix is not affiliated with, endorsed by, sponsored by, or associated with any third-party stream hosts, media networks, or content producers. All trademarks, service marks, and trade names referenced belong to their respective owners.
+
+### 4. Copyright & DMCA Takedown Notices
+Because SnapFlix does not host or store any media files on its servers, the Owner does not have the technical ability or legal jurisdiction to remove content hosted on external third-party servers. Copyright holders requesting the removal of specific media files must direct their requests to the actual web hosting services storing the content.
+
+### 5. Disclaimer of Warranty & Limitation of Liability
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR OWNER (FARHAN ANSARI) BE LIABLE FOR ANY CLAIM, DAMAGES, LOSS OF DATA, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+**Author & Sole Owner:** Farhan Ansari  
+**Contact:** [ansarixfarhan](https://github.com/ansarixfarhan)  

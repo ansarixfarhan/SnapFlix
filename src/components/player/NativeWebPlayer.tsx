@@ -1047,46 +1047,10 @@ export default function NativeWebPlayer({
     }
   }, []);
 
-  // Suppress dynamic subtitle tracks if activeSubtitleId is 'off', and position cues precisely below the movie frame
+  // Suppress dynamic subtitle tracks if activeSubtitleId is 'off'
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !video.textTracks) return;
-
-    const calculateOptimalCueLine = () => {
-      const v = videoRef.current;
-      if (!v || !v.videoWidth || !v.videoHeight || !v.clientHeight) {
-        return 88;
-      }
-      const elW = v.clientWidth || v.parentElement?.clientWidth || window.innerWidth;
-      const elH = v.clientHeight || v.parentElement?.clientHeight || window.innerHeight;
-      const videoAspect = v.videoWidth / v.videoHeight;
-      const containerAspect = elW / elH;
-
-      if (videoAspect > containerAspect) {
-        // Video has black letterbox bars top and bottom (e.g. 2.39:1 widescreen movie)
-        const renderedH = elW / videoAspect;
-        const bottomMovieEdge = (elH + renderedH) / 2;
-        // Lift 1-2px higher as requested right along the movie picture boundary
-        const targetY = bottomMovieEdge;
-        const percent = Math.min(93, Math.max(81, (targetY / elH) * 100));
-        return Math.round(percent * 10) / 10;
-      } else {
-        // Full screen or pillarbox
-        return 89;
-      }
-    };
-
-    const liftCues = (track: TextTrack) => {
-      if (!track.activeCues) return;
-      const optimalLine = calculateOptimalCueLine();
-      for (let i = 0; i < track.activeCues.length; i++) {
-        const cue = track.activeCues[i] as any;
-        if (cue) {
-          cue.snapToLines = false;
-          cue.line = optimalLine;
-        }
-      }
-    };
 
     const attachCueListener = (track: TextTrack) => {
       track.removeEventListener('cuechange', (track as any)._snapflixCueHandler);
@@ -1095,8 +1059,6 @@ export default function NativeWebPlayer({
           try {
             track.mode = 'disabled';
           } catch (e) {}
-        } else {
-          liftCues(track);
         }
       };
       (track as any)._snapflixCueHandler = handler;
@@ -1130,6 +1092,67 @@ export default function NativeWebPlayer({
       }
     };
   }, []);
+
+  // Dynamically position subtitles right along the bottom movie picture boundary into the black letterbox bar
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const updateSubtitleOffset = () => {
+      const v = videoRef.current;
+      if (!v) return;
+
+      const elW = v.clientWidth || v.parentElement?.clientWidth || window.innerWidth;
+      const elH = v.clientHeight || v.parentElement?.clientHeight || window.innerHeight;
+
+      if (!elH || !elW) return;
+
+      const videoW = v.videoWidth || 1920;
+      const videoH = v.videoHeight || 1080;
+      const videoAspect = videoW / videoH;
+      const containerAspect = elW / elH;
+
+      let liftPx = Math.round(elH * 0.075); // Standard fallback lift ~7.5% of container height
+
+      if (videoAspect > containerAspect) {
+        // Video has black letterbox bars top and bottom (e.g. 2.39:1 widescreen movie)
+        const renderedH = elW / videoAspect;
+        const bottomMovieEdge = (elH + renderedH) / 2;
+        // Native bottom cue baseline is approximately at elH - 24px
+        // Position cue just below bottomMovieEdge + 6px into the black bar
+        const nativeCueY = elH - 24;
+        const targetCueY = bottomMovieEdge + 6;
+        const diff = nativeCueY - targetCueY;
+        if (diff > 8 && diff < elH * 0.35) {
+          liftPx = Math.round(diff);
+        }
+      }
+
+      v.style.setProperty('--snapflix-cue-offset', `-${liftPx}px`);
+    };
+
+    updateSubtitleOffset();
+
+    video.addEventListener('loadedmetadata', updateSubtitleOffset);
+    window.addEventListener('resize', updateSubtitleOffset);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && video.parentElement) {
+      ro = new ResizeObserver(updateSubtitleOffset);
+      ro.observe(video.parentElement);
+    }
+
+    const t1 = setTimeout(updateSubtitleOffset, 400);
+    const t2 = setTimeout(updateSubtitleOffset, 1200);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      video.removeEventListener('loadedmetadata', updateSubtitleOffset);
+      window.removeEventListener('resize', updateSubtitleOffset);
+      if (ro) ro.disconnect();
+    };
+  }, [selectedStream, isFullscreen]);
 
   // Revoke any active blob URL on unmount
   useEffect(() => {
@@ -1863,15 +1886,12 @@ export default function NativeWebPlayer({
           .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
       }
 
-      // Elevate cue position so subtitles sit comfortably elevated above bottom edge
+      // Clean up conflicting line settings so player dynamic styles position cues uniformly
       content = content.replace(
         /((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})([^\r\n]*)/g,
         (_match, timing, settings) => {
-          const s = (settings || '').trim();
-          if (!s.includes('line:')) {
-            return `${timing} ${s ? s + ' ' : ''}line:88%`.trim();
-          }
-          return `${timing} ${s}`.trim();
+          const cleanSettings = (settings || '').replace(/\bline:\S+/g, '').trim();
+          return `${timing}${cleanSettings ? ' ' + cleanSettings : ''}`.trim();
         }
       );
 
@@ -4503,6 +4523,16 @@ export default function NativeWebPlayer({
           background-color: ${subBg === 'transparent' ? 'transparent' : 'rgba(0, 0, 0, 0.75)'} !important;
           text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9) !important;
           line-height: 1.4 !important;
+        }
+
+        /* Position subtitles comfortably below movie frame into black letterbox bar */
+        video::-webkit-media-text-track-container {
+          overflow: visible !important;
+        }
+
+        video::-webkit-media-text-track-display {
+          transform: translateY(var(--snapflix-cue-offset, -7.5vh)) !important;
+          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
 
 

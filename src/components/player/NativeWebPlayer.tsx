@@ -1793,18 +1793,24 @@ export default function NativeWebPlayer({
       if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
-          lowLatencyMode: true,
-          capLevelToPlayerSize: true,
-          startLevel: -1,
-          autoStartLoad: true,
-          startPosition: seekTo > 0 ? seekTo : -1,
-          maxBufferLength: 15,
-          maxMaxBufferLength: 30,
-          maxBufferSize: 30 * 1000 * 1000,
+          lowLatencyMode: false,
+          backBufferLength: 60,
+          maxBufferLength: 60,
+          maxMaxBufferLength: 180,
+          maxBufferSize: 120 * 1024 * 1024,
           maxBufferHole: 0.5,
           highBufferWatchdogPeriod: 2,
           nudgeOffset: 0.1,
           nudgeMaxRetry: 5,
+          capLevelToPlayerSize: true,
+          startLevel: -1,
+          autoStartLoad: true,
+          startPosition: seekTo > 0 ? seekTo : -1,
+          fragLoadingTimeOut: 25000,
+          fragLoadingMaxRetry: 6,
+          fragLoadingRetryDelay: 500,
+          manifestLoadingTimeOut: 15000,
+          levelLoadingTimeOut: 15000,
         });
         hlsRef.current = hls;
 

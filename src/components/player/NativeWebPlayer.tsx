@@ -1047,21 +1047,44 @@ export default function NativeWebPlayer({
     }
   }, []);
 
-  // Suppress dynamic subtitle tracks if activeSubtitleId is 'off', and lift cues from bottom edge
+  // Suppress dynamic subtitle tracks if activeSubtitleId is 'off', and position cues precisely below the movie frame
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !video.textTracks) return;
 
+    const calculateOptimalCueLine = () => {
+      const v = videoRef.current;
+      if (!v || !v.videoWidth || !v.videoHeight || !v.clientHeight) {
+        return 89;
+      }
+      const elW = v.clientWidth || v.parentElement?.clientWidth || window.innerWidth;
+      const elH = v.clientHeight || v.parentElement?.clientHeight || window.innerHeight;
+      const videoAspect = v.videoWidth / v.videoHeight;
+      const containerAspect = elW / elH;
+
+      if (videoAspect > containerAspect) {
+        // Video has black letterbox bars top and bottom (e.g. 2.39:1 widescreen movie)
+        const renderedH = elW / videoAspect;
+        const bottomMovieEdge = (elH + renderedH) / 2;
+        // User requested: "jahan se niche se movie ka page hai na usse 1px niche chahiye"
+        // Place cue 1-2px below the bottom edge of the movie image into the black bar:
+        const targetY = bottomMovieEdge + 2;
+        const percent = Math.min(94, Math.max(82, (targetY / elH) * 100));
+        return Math.round(percent * 10) / 10;
+      } else {
+        // Full screen or pillarbox
+        return 90;
+      }
+    };
+
     const liftCues = (track: TextTrack) => {
       if (!track.activeCues) return;
+      const optimalLine = calculateOptimalCueLine();
       for (let i = 0; i < track.activeCues.length; i++) {
         const cue = track.activeCues[i] as any;
         if (cue) {
-          // If cue is positioned at default bottom edge (auto / -1 / 100), elevate it cleanly
-          if (cue.line === 'auto' || cue.line === -1 || cue.line === 100 || cue.line === undefined) {
-            cue.snapToLines = false;
-            cue.line = showControls ? 78 : 84;
-          }
+          cue.snapToLines = false;
+          cue.line = optimalLine;
         }
       }
     };
@@ -1107,7 +1130,7 @@ export default function NativeWebPlayer({
         }
       }
     };
-  }, [showControls]);
+  }, []);
 
   // Revoke any active blob URL on unmount
   useEffect(() => {
@@ -1818,7 +1841,7 @@ export default function NativeWebPlayer({
         (_match, timing, settings) => {
           const s = (settings || '').trim();
           if (!s.includes('line:')) {
-            return `${timing} ${s ? s + ' ' : ''}line:84%`.trim();
+            return `${timing} ${s ? s + ' ' : ''}line:89%`.trim();
           }
           return `${timing} ${s}`.trim();
         }
@@ -4398,17 +4421,7 @@ export default function NativeWebPlayer({
           line-height: 1.4 !important;
         }
 
-        /* Lift subtitle track container comfortably above bottom edge & player controls */
-        video::-webkit-media-text-track-container {
-          bottom: ${showControls ? '80px' : '44px'} !important;
-          transform: translateY(${showControls ? '-46px' : '-20px'}) !important;
-          transition: transform 0.25s ease, bottom 0.25s ease !important;
-        }
 
-        video::-webkit-media-text-track-display {
-          transform: translateY(${showControls ? '-46px' : '-20px'}) !important;
-          transition: transform 0.25s ease !important;
-        }
 
         @keyframes partyFloatUp {
           0% {

@@ -558,6 +558,7 @@ export default function NativeWebPlayer({
   const [buffered, setBuffered] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [isAutoplayMuted, setIsAutoplayMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showAudioDrawer, setShowAudioDrawer] = useState(false);
@@ -622,6 +623,75 @@ export default function NativeWebPlayer({
   const hasAutoResumedRef = useRef<boolean>(false);
   const lastSavedTimeRef = useRef<number>(0);
   const lastSaveTimestampRef = useRef<number>(0);
+
+  // Autoplay Engine: Ensures playback always starts immediately across all browsers
+  const unmuteFromAutoplay = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      setIsMuted(false);
+    }
+    setIsAutoplayMuted(false);
+  }, []);
+
+  const executeAutoPlay = useCallback((videoEl?: HTMLVideoElement | null) => {
+    const el = videoEl || videoRef.current;
+    if (!el) return;
+
+    const playPromise = el.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setIsPlaying(true);
+          setHasStartedPlayback(true);
+          setIsBuffering(false);
+          setIsAutoplayMuted(false);
+        })
+        .catch((playErr: any) => {
+          // If browser policy blocked unmuted playback (NotAllowedError)
+          if (playErr?.name === 'NotAllowedError') {
+            console.log('[Player] Unmuted autoplay blocked by browser policy. Retrying muted autoplay...');
+            el.muted = true;
+            setIsMuted(true);
+            setIsAutoplayMuted(true);
+
+            el.play()
+              .then(() => {
+                setIsPlaying(true);
+                setHasStartedPlayback(true);
+                setIsBuffering(false);
+              })
+              .catch((retryErr) => {
+                console.warn('[Player] Muted autoplay also failed:', retryErr);
+                setIsBuffering(false);
+                setIsPlaying(false);
+                setShowControls(true);
+              });
+          } else if (playErr?.name !== 'AbortError') {
+            console.log('[Player] Autoplay prevented by browser:', playErr);
+            setIsBuffering(false);
+            setIsPlaying(false);
+            setShowControls(true);
+          }
+        });
+    }
+  }, []);
+
+  // Listen for first user interaction (touch/click/key) to unmute automatically if autoplay was muted
+  useEffect(() => {
+    if (!isAutoplayMuted) return;
+
+    const handleFirstInteraction = () => {
+      unmuteFromAutoplay();
+    };
+
+    window.addEventListener('pointerdown', handleFirstInteraction, { once: true, passive: true });
+    window.addEventListener('keydown', handleFirstInteraction, { once: true, passive: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, [isAutoplayMuted, unmuteFromAutoplay]);
 
   // Watch Party States & Realtime Integration
   const currentUsername =
@@ -1825,12 +1895,7 @@ export default function NativeWebPlayer({
               console.warn('[Player] Initial seek error:', e);
             }
           }
-          videoRef.current?.play().catch((playErr) => {
-            console.log('[Player] Autoplay prevented by browser, waiting for user tap:', playErr);
-            setIsBuffering(false);
-            setIsPlaying(false);
-            setShowControls(true);
-          });
+          executeAutoPlay(videoRef.current);
 
           if (data?.levels && data.levels.length > 0) {
             setHlsLevels(data.levels);
@@ -1951,12 +2016,7 @@ export default function NativeWebPlayer({
           };
           videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
         }
-        videoRef.current.play().catch((playErr) => {
-          console.log('[Player] iOS autoplay blocked, waiting for user tap:', playErr);
-          setIsBuffering(false);
-          setIsPlaying(false);
-          setShowControls(true);
-        });
+        executeAutoPlay(videoRef.current);
       }
     } else {
       const videoEl = videoRef.current;
@@ -1980,12 +2040,7 @@ export default function NativeWebPlayer({
       };
 
       videoEl.addEventListener('error', handleNativeError, { once: true });
-      videoEl.play().catch((playErr) => {
-        console.log('[Player] Native MP4 autoplay blocked, waiting for user tap:', playErr);
-        setIsBuffering(false);
-        setIsPlaying(false);
-        setShowControls(true);
-      });
+      executeAutoPlay(videoEl);
 
       return () => {
         videoEl.removeEventListener('error', handleNativeError);
@@ -2166,6 +2221,9 @@ export default function NativeWebPlayer({
   // Screen click toggles player buttons visibility (hide if visible, show if hidden) - NEVER plays/pauses on screen tap
   // YouTube-Style: Double-tap on right half skips +10s, double-tap on left half rewinds -10s
   const handleContainerClick = (e: React.MouseEvent) => {
+    if (isAutoplayMuted) {
+      unmuteFromAutoplay();
+    }
     if (isPinchingRef.current) return;
     const container = containerRef.current;
     const rect = container?.getBoundingClientRect();
@@ -2484,6 +2542,7 @@ export default function NativeWebPlayer({
       <video
         ref={videoRef}
         playsInline
+        autoPlay
         crossOrigin="anonymous"
         onPlay={() => {
           setIsPlaying(true);
@@ -2573,6 +2632,22 @@ export default function NativeWebPlayer({
           />
         )}
       </video>
+
+      {/* Autoplay Muted Floating Unmute Banner (Twitter/YouTube/Instagram Style) */}
+      {isAutoplayMuted && isPlaying && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            unmuteFromAutoplay();
+          }}
+          className="absolute top-4 sm:top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-black/85 hover:bg-black/95 border border-white/20 text-white font-bold text-xs sm:text-sm backdrop-blur-md shadow-2xl transition transform active:scale-95 cursor-pointer group"
+          title="Click to enable sound"
+        >
+          <IoVolumeMute size={18} className="text-[#E50914] group-hover:scale-110 transition-transform" />
+          <span>Click to unmute</span>
+        </button>
+      )}
 
       {/* 1.1 Netflix-Style Pause Hero Image Overlay (Fades in over 0.5s after 1s paused) */}
       <div

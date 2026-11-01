@@ -1591,52 +1591,45 @@ export default function NativeWebPlayer({
 
         const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
         const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
-        const targetUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
 
-        let data: any = null;
+        const primaryUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
+        const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
 
-        // 1. Try Primary Provider (Cloudflare Worker Edge - SnapFlix Fast)
+        const combinedResults: any[] = [];
+
+        // Fetch both Primary (Cloudflare Worker Edge) and Secondary (Oracle VPS - Vidy Multi-Audio) in parallel
         try {
-          const res = await fetch(targetUrl);
-          if (res.ok) {
-            const json = await res.json();
-            if (json.success && Array.isArray(json.results) && json.results.length > 0) {
-              data = json;
-            }
-          }
-        } catch (primaryErr) {
-          console.warn('[SnapFlix-Web] Primary provider fetch failed, attempting secondary tier:', primaryErr);
-        }
+          const [primarySettled, secSettled] = await Promise.allSettled([
+            fetch(primaryUrl).then(async (r) => (r.ok ? r.json() : null)),
+            fetch(secUrl).then(async (r) => (r.ok ? r.json() : null)),
+          ]);
 
-        // 2. If Primary Provider returned no streams, immediately try Secondary Provider (Oracle VPS - SnapFlix Vidy Multi-Audio)
-        if (!data || !data.results || data.results.length === 0) {
-          try {
-            const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
-            const secRes = await fetch(secUrl);
-            if (secRes.ok) {
-              const secJson = await secRes.json();
-              if (secJson.success && Array.isArray(secJson.results) && secJson.results.length > 0) {
-                data = secJson;
-              }
-            }
-          } catch (secErr) {
-            console.warn('[SnapFlix-Web] Secondary provider fetch failed:', secErr);
+          const primaryData = primarySettled.status === 'fulfilled' ? primarySettled.value : null;
+          const secData = secSettled.status === 'fulfilled' ? secSettled.value : null;
+
+          if (primaryData?.success && Array.isArray(primaryData.results)) {
+            combinedResults.push(...primaryData.results);
           }
+          if (secData?.success && Array.isArray(secData.results)) {
+            combinedResults.push(...secData.results);
+          }
+        } catch (fetchErr) {
+          console.warn('[SnapFlix-Web] Error resolving providers in parallel:', fetchErr);
         }
 
         if (!active) return;
 
-        if (!data || !data.success || !data.results || data.results.length === 0) {
+        if (combinedResults.length === 0) {
           throw new Error('No stream available from active providers.');
         }
 
-        setProviderResults(data.results);
+        setProviderResults(combinedResults);
 
         // Pick the best streamable stream (m3u8 or mp4) - strictly ignore mkv
         let chosen: StreamItem | null = null;
 
         // 1. Check for a playable stream with Hindi audio if available
-        for (const prov of data.results) {
+        for (const prov of combinedResults) {
           const match = prov.streams.find((s: StreamItem) => {
             if (!isPlayableStream(s)) return false;
             const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
@@ -1649,9 +1642,22 @@ export default function NativeWebPlayer({
           }
         }
 
-        // 2. Fallback to first playable stream
+        // 2. Prefer SnapFlix Vidy (dedicated 1080p HLS) if available for pristine playback
         if (!chosen) {
-          for (const prov of data.results) {
+          const vidyProv = combinedResults.find((p) => p.providerValue === 'snapflix-vidy');
+          if (vidyProv?.streams?.length) {
+            const match = vidyProv.streams.find((s: StreamItem) => isPlayableStream(s));
+            if (match) {
+              chosen = { ...match, providerName: vidyProv.providerName };
+              const initialLangs = getStreamAudioLanguages(match, vidyProv.infoTitle, originalLanguage);
+              setActiveLanguage(initialLangs[0] || 'English');
+            }
+          }
+        }
+
+        // 3. Fallback to first playable stream across all providers
+        if (!chosen) {
+          for (const prov of combinedResults) {
             const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
             if (match) {
               const streamChoice = { ...match, providerName: prov.providerName };
@@ -1663,13 +1669,13 @@ export default function NativeWebPlayer({
           }
         }
 
-        if (!chosen && data.results[0]?.streams?.length > 0) {
+        if (!chosen && combinedResults[0]?.streams?.length > 0) {
           const fallbackChoice = {
-            ...data.results[0].streams[0],
-            providerName: data.results[0].providerName,
+            ...combinedResults[0].streams[0],
+            providerName: combinedResults[0].providerName,
           };
           chosen = fallbackChoice;
-          const initialLangs = getStreamAudioLanguages(fallbackChoice, data.results[0].infoTitle, originalLanguage);
+          const initialLangs = getStreamAudioLanguages(fallbackChoice, combinedResults[0].infoTitle, originalLanguage);
           setActiveLanguage(initialLangs[0] || 'English');
         }
 
@@ -1733,15 +1739,21 @@ export default function NativeWebPlayer({
       return stream.link;
     }
 
+    const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
+
+    // streamrip.fun and rousav.tech require proxying to bypass CORS and hotlink filters (Oracle VPS handles both cleanly)
+    if (stream.link.includes('streamrip.fun') || stream.link.includes('rousav.tech')) {
+      return `${vpsApiBase}/api/proxy/stream?url=${encodeURIComponent(stream.link)}`;
+    }
+
     const hasHeaders = stream.headers && Object.keys(stream.headers).length > 0;
 
     // Streams with custom request headers (e.g. Referer or Origin like Movy/Phoenix) MUST be routed through
-    // proxy-stream because the browser cannot set custom Referer/Origin headers on XMLHttpRequest.
+    // proxy because the browser cannot set custom Referer/Origin headers on XMLHttpRequest.
     // Streams without custom headers play directly in the browser to avoid server bottlenecks.
     if (hasHeaders) {
-      const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
       const headersJson = JSON.stringify(stream.headers || {});
-      return `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
+      return `${vpsApiBase}/api/proxy/stream?url=${encodeURIComponent(
         stream.link
       )}&headers=${encodeURIComponent(headersJson)}`;
     }
@@ -1887,14 +1899,14 @@ export default function NativeWebPlayer({
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                // If direct stream failed, attempt proxy fallback once
+                // If direct stream failed, attempt proxy fallback once via dedicated VPS proxy
                 if (hls.url && !hls.url.includes('proxy-stream') && !hls.url.includes('/api/proxy')) {
-                  const providerApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://api.snapflix.indevs.in').replace(/\/$/, '');
+                  const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://api1.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
-                  const proxyUrl = `${providerApiBase}/api/provider/proxy-stream?url=${encodeURIComponent(
+                  const proxyUrl = `${vpsApiBase}/api/proxy/stream?url=${encodeURIComponent(
                     selectedStream.link
                   )}&headers=${encodeURIComponent(headersJson)}`;
-                  console.warn('[Player] Direct stream failed, attempting proxy fallback:', proxyUrl);
+                  console.warn('[Player] Direct stream failed, attempting VPS proxy fallback:', proxyUrl);
                   hls.loadSource(proxyUrl);
                   hls.startLoad();
                   return;

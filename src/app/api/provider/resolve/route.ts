@@ -6,48 +6,70 @@ const SECONDARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https:/
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
-  // 1. Try Primary Backend (Cloudflare Worker - SnapFlix Edge)
   try {
-    const primaryUrl = `${PRIMARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`;
-    const primaryRes = await fetch(primaryUrl, {
-      headers: { Accept: 'application/json' },
-    });
+    const [primarySettled, secondarySettled] = await Promise.allSettled([
+      fetch(`${PRIMARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
+        headers: { Accept: 'application/json' },
+      }).then(async (r) => (r.ok ? r.json() : null)),
+      fetch(`${SECONDARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
+        headers: { Accept: 'application/json' },
+      }).then(async (r) => (r.ok ? r.json() : null)),
+    ]);
 
-    if (primaryRes.ok) {
-      const primaryData = await primaryRes.json();
-      if (primaryData.success && Array.isArray(primaryData.results) && primaryData.results.length > 0) {
-        return NextResponse.json(primaryData, {
+    const primaryData = primarySettled.status === 'fulfilled' ? primarySettled.value : null;
+    const secondaryData = secondarySettled.status === 'fulfilled' ? secondarySettled.value : null;
+
+    const combinedResults = [
+      ...(primaryData?.results || []),
+      ...(secondaryData?.results || []),
+    ];
+    const combinedStreams = [
+      ...(primaryData?.streams || []),
+      ...(secondaryData?.streams || []),
+    ];
+
+    if (combinedResults.length > 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          query: primaryData?.query || secondaryData?.query || {},
+          media: primaryData?.media || secondaryData?.media || {},
+          tier: 'hybrid',
+          providersResponded: [
+            ...(primaryData?.providersResponded || []),
+            ...(secondaryData?.providersResponded || []),
+          ],
+          totalStreams: combinedStreams.length,
+          streams: combinedStreams,
+          results: combinedResults,
+        },
+        {
           status: 200,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, OPTIONS',
             'Access-Control-Allow-Headers': '*',
           },
-        });
-      }
+        }
+      );
     }
-  } catch (err) {
-    console.warn('[SnapFlix-Web Proxy] Primary backend failed, trying secondary...', err);
-  }
 
-  // 2. Fallback to Secondary Backend (Oracle VPS - SnapFlix Vidy Multi-Audio)
-  try {
-    const secondaryUrl = `${SECONDARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`;
-    const secondaryRes = await fetch(secondaryUrl, {
-      headers: { Accept: 'application/json' },
-    });
-
-    const secData = await secondaryRes.json();
-    return NextResponse.json(secData, {
-      status: secondaryRes.status,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': '*',
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'No streams available from active providers.',
       },
-    });
+      {
+        status: 404,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+        },
+      }
+    );
   } catch (error: any) {
-    console.error('[SnapFlix-Web API/Resolve Proxy Error]:', error);
+    console.error('[SnapFlix-Web API/Resolve Hybrid Proxy Error]:', error);
     return NextResponse.json(
       {
         success: false,

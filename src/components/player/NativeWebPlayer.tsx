@@ -3496,10 +3496,10 @@ export default function NativeWebPlayer({
                 triggerControls();
               }}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-xs font-semibold text-white/90 hover:text-white transition cursor-pointer backdrop-blur-md active:scale-95 shadow-md shrink-0 pointer-events-auto"
-              title="Server & Quality"
+              title="Quality & Server"
             >
               <IoServerOutline size={15} className="text-white/80" />
-              <span className="hidden sm:inline">Server & Quality</span>
+              <span className="hidden sm:inline">Quality & Server</span>
             </button>
 
             {/* Netflix-style 2-Column Server & Quality Popover Window - Desktop (sm+) */}
@@ -3508,8 +3508,44 @@ export default function NativeWebPlayer({
                 onClick={(e) => e.stopPropagation()}
                 className="hidden sm:flex absolute top-full right-0 mt-2.5 w-[460px] md:w-[480px] bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_50px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-3.5 z-50 flex-row overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
               >
-                {/* Left Column: Server */}
+                {/* Left Column: Quality */}
                 <div className="flex-1 flex flex-col min-w-0 pr-3">
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1.5 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
+                    <span>Quality</span>
+                  </div>
+
+                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-0.5 p-0.5 pr-1">
+                    {availableQualities.map((q) => {
+                      const isSelected = selectedQuality === q.key;
+                      return (
+                        <button
+                          key={q.key}
+                          type="button"
+                          onClick={() => handleSelectQuality(q.key)}
+                          className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
+                              : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-3.5 text-center shrink-0">
+                              {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
+                            </span>
+                            <span className="text-[11px] font-medium truncate">{q.label}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Vertical Partition / Divider */}
+                <div className="w-[1px] bg-white/10 self-stretch my-1 shrink-0" />
+
+                {/* Right Column: Server */}
+                <div className="flex-1 flex flex-col min-w-0 pl-3">
                   <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1.5 shrink-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
                     <span>Server</span>
@@ -3544,42 +3580,6 @@ export default function NativeWebPlayer({
                     ) : (
                       <div className="px-2.5 py-2 text-[11px] text-gray-500 italic">No servers available</div>
                     )}
-                  </div>
-                </div>
-
-                {/* Vertical Partition / Divider */}
-                <div className="w-[1px] bg-white/10 self-stretch my-1 shrink-0" />
-
-                {/* Right Column: Quality */}
-                <div className="flex-1 flex flex-col min-w-0 pl-3">
-                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1.5 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
-                    <span>Quality</span>
-                  </div>
-
-                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-0.5 p-0.5 pr-1">
-                    {availableQualities.map((q) => {
-                      const isSelected = selectedQuality === q.key;
-                      return (
-                        <button
-                          key={q.key}
-                          type="button"
-                          onClick={() => handleSelectQuality(q.key)}
-                          className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${
-                            isSelected
-                              ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
-                              : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-3.5 text-center shrink-0">
-                              {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
-                            </span>
-                            <span className="text-[11px] font-medium truncate">{q.label}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
                   </div>
                 </div>
               </div>
@@ -4246,18 +4246,6 @@ export default function NativeWebPlayer({
                 <div className="flex items-center gap-1.5 p-1 bg-white/10 rounded-xl overflow-x-auto scrollbar-none max-w-[calc(100%-40px)]">
                   <button
                     type="button"
-                    onClick={() => setMobileDrawerTab('servers')}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
-                      mobileDrawerTab === 'servers'
-                        ? "bg-[#E50914] text-white shadow-sm"
-                        : "text-gray-400 hover:text-white"
-                    )}
-                  >
-                    Server
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setMobileDrawerTab('quality')}
                     className={cn(
                       "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
@@ -4267,6 +4255,18 @@ export default function NativeWebPlayer({
                     )}
                   >
                     Quality
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileDrawerTab('servers')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap",
+                      mobileDrawerTab === 'servers'
+                        ? "bg-[#E50914] text-white shadow-sm"
+                        : "text-gray-400 hover:text-white"
+                    )}
+                  >
+                    Server
                   </button>
                   <button
                     type="button"
@@ -4317,6 +4317,37 @@ export default function NativeWebPlayer({
                 </div>
               </div>
 
+              {/* Tab: Quality */}
+              {mobileDrawerTab === 'quality' && (
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5">
+                  {availableQualities.map((q) => {
+                    const isSelected = selectedQuality === q.key;
+                    return (
+                      <button
+                        key={`mobile-q-${q.key}`}
+                        type="button"
+                        onClick={() => {
+                          handleSelectQuality(q.key);
+                          setShowMobileDrawer(false);
+                        }}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                          isSelected
+                            ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                            : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-4 text-center shrink-0">
+                            {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                          </span>
+                          <span className="text-xs font-medium truncate">{q.label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Tab: Server */}
               {mobileDrawerTab === 'servers' && (
                 <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5">
@@ -4351,37 +4382,6 @@ export default function NativeWebPlayer({
                   ) : (
                     <div className="px-3 py-2 text-xs text-gray-400 italic">No servers available</div>
                   )}
-                </div>
-              )}
-
-              {/* Tab: Quality */}
-              {mobileDrawerTab === 'quality' && (
-                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5">
-                  {availableQualities.map((q) => {
-                    const isSelected = selectedQuality === q.key;
-                    return (
-                      <button
-                        key={`mobile-q-${q.key}`}
-                        type="button"
-                        onClick={() => {
-                          handleSelectQuality(q.key);
-                          setShowMobileDrawer(false);
-                        }}
-                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                          isSelected
-                            ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                            : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="w-4 text-center shrink-0">
-                            {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                          </span>
-                          <span className="text-xs font-medium truncate">{q.label}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
                 </div>
               )}
 

@@ -1010,7 +1010,7 @@ export default function NativeWebPlayer({
   const resumeTimeRef = useRef<number | null>(null);
   const failedStreamLinksRef = useRef<Set<string>>(new Set());
   const standbyFallbackRef = useRef<{ provider: 'Vidy'; results: any[] } | null>(null);
-  const [activeLanguage, setActiveLanguage] = useState<string>('English');
+  const [activeLanguage, setActiveLanguage] = useState<string>('Hindi');
   const [hlsAudioTracks, setHlsAudioTracks] = useState<any[]>([]);
   const [currentHlsAudioTrack, setCurrentHlsAudioTrack] = useState<number>(-1);
 
@@ -1324,18 +1324,47 @@ export default function NativeWebPlayer({
 
     return Array.from(counts.entries())
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => {
+        if (a.name === 'Hindi') return -1;
+        if (b.name === 'Hindi') return 1;
+        if (a.name === 'English') return -1;
+        if (b.name === 'English') return 1;
+        return b.count - a.count;
+      });
   }, [providerResults, originalLanguage, hlsAudioTracks]);
 
   // Keep activeLanguage in sync with current stream
   useEffect(() => {
     if (!selectedStream) return;
+    if (isHlsStream(selectedStream)) {
+      if (hlsAudioTracks.length > 0) {
+        const hasTrack = hlsAudioTracks.some((t: any) => {
+          const tLang = (t.lang || '').toLowerCase();
+          const tName = (t.name || '').toLowerCase();
+          const aliases = LANG_CODE_ALIASES[activeLanguage] || [activeLanguage.toLowerCase()];
+          return aliases.some((a) => tLang === a || tName.includes(a));
+        });
+        if (!hasTrack) {
+          const currentTrack = hlsAudioTracks[currentHlsAudioTrack >= 0 ? currentHlsAudioTrack : 0];
+          const detected = parseWordToLanguage(currentTrack?.name || currentTrack?.lang || '');
+          if (detected) {
+            setActiveLanguage(detected);
+          }
+        }
+      }
+      return;
+    }
+
     const currentProv = providerResults.find((p) => p.providerName === selectedStream.providerName);
     const langs = getStreamAudioLanguages(selectedStream, currentProv?.infoTitle, originalLanguage);
     if (langs.length > 0 && !langs.includes(activeLanguage)) {
-      setActiveLanguage(langs[0]);
+      if (langs.includes('Hindi')) {
+        setActiveLanguage('Hindi');
+      } else {
+        setActiveLanguage(langs[0]);
+      }
     }
-  }, [selectedStream, providerResults, originalLanguage]);
+  }, [selectedStream, providerResults, originalLanguage, hlsAudioTracks, currentHlsAudioTrack, activeLanguage]);
 
   // Instant Audio Switcher Handler: switches audio immediately without redirecting to servers list
   const handleSelectLanguage = (targetLang: string) => {
@@ -2082,17 +2111,42 @@ export default function NativeWebPlayer({
         // Set providerResults to the active provider ONLY (never mixed!)
         setProviderResults(chosenResults);
 
-        // Pick the best streamable stream (m3u8 or mp4) - strictly ignore mkv
+        // Pick the best streamable stream (m3u8 or mp4) - prioritizing Hindi audio
         let chosen: StreamItem | null = null;
 
+        // 1. Check if any playable stream explicitly has Hindi audio
         for (const prov of chosenResults) {
-          const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
-          if (match) {
-            const streamChoice = { ...match, providerName: prov.providerName };
-            chosen = streamChoice;
-            const initialLangs = getStreamAudioLanguages(streamChoice, prov.infoTitle, originalLanguage);
-            setActiveLanguage(initialLangs[0] || 'English');
+          const hindiMatch = prov.streams.find((s: StreamItem) => {
+            if (!isPlayableStream(s)) return false;
+            const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
+            return langs.includes('Hindi');
+          });
+          if (hindiMatch) {
+            chosen = { ...hindiMatch, providerName: prov.providerName };
+            setActiveLanguage('Hindi');
             break;
+          }
+        }
+
+        // 2. If no explicit Hindi stream, pick first playable stream (e.g. Adaptive HLS with multi-audio)
+        if (!chosen) {
+          for (const prov of chosenResults) {
+            const match = prov.streams.find((s: StreamItem) => isPlayableStream(s));
+            if (match) {
+              const streamChoice = { ...match, providerName: prov.providerName };
+              chosen = streamChoice;
+              const initialLangs = getStreamAudioLanguages(streamChoice, prov.infoTitle, originalLanguage);
+              if (initialLangs.includes('Hindi')) {
+                setActiveLanguage('Hindi');
+              } else if (isHlsStream(streamChoice)) {
+                // Adaptive HLS (e.g. Vidly Fast) contains internal multi-audio tracks in its manifest.
+                // Keep 'Hindi' as the preferred activeLanguage so HLS MANIFEST_PARSED auto-selects Hindi track if available!
+                setActiveLanguage('Hindi');
+              } else {
+                setActiveLanguage(initialLangs[0] || 'English');
+              }
+              break;
+            }
           }
         }
 
@@ -2103,7 +2157,13 @@ export default function NativeWebPlayer({
           };
           chosen = fallbackChoice;
           const initialLangs = getStreamAudioLanguages(fallbackChoice, chosenResults[0].infoTitle, originalLanguage);
-          setActiveLanguage(initialLangs[0] || 'English');
+          if (initialLangs.includes('Hindi')) {
+            setActiveLanguage('Hindi');
+          } else if (isHlsStream(fallbackChoice)) {
+            setActiveLanguage('Hindi');
+          } else {
+            setActiveLanguage(initialLangs[0] || 'English');
+          }
         }
 
         setSelectedStream(chosen);
@@ -2238,10 +2298,18 @@ export default function NativeWebPlayer({
               const tName = (t.name || '').toLowerCase();
               return aliases.some((a) => tLang === a || tName.includes(a));
             });
-            if (matchIdx !== -1 && hls.audioTrack !== matchIdx) {
-              hls.audioTrack = matchIdx;
+            if (matchIdx !== -1) {
+              if (hls.audioTrack !== matchIdx) {
+                hls.audioTrack = matchIdx;
+              }
               setCurrentHlsAudioTrack(matchIdx);
+              setActiveLanguage(preferred);
             } else {
+              const currentTrack = hls.audioTracks[hls.audioTrack >= 0 ? hls.audioTrack : 0];
+              const detected = parseWordToLanguage(currentTrack?.name || currentTrack?.lang || '');
+              if (detected) {
+                setActiveLanguage(detected);
+              }
               setCurrentHlsAudioTrack(hls.audioTrack);
             }
           }
@@ -2264,9 +2332,18 @@ export default function NativeWebPlayer({
               const tName = (t.name || '').toLowerCase();
               return aliases.some((a) => tLang === a || tName.includes(a));
             });
-            if (matchIdx !== -1 && hls.audioTrack !== matchIdx) {
-              hls.audioTrack = matchIdx;
+            if (matchIdx !== -1) {
+              if (hls.audioTrack !== matchIdx) {
+                hls.audioTrack = matchIdx;
+              }
               setCurrentHlsAudioTrack(matchIdx);
+              setActiveLanguage(preferred);
+            } else if (activeLanguage === 'Hindi') {
+              const currentTrack = data.audioTracks[hls.audioTrack >= 0 ? hls.audioTrack : 0];
+              const detected = parseWordToLanguage(currentTrack?.name || currentTrack?.lang || '');
+              if (detected) {
+                setActiveLanguage(detected);
+              }
             }
           }
         });
@@ -2274,6 +2351,14 @@ export default function NativeWebPlayer({
         hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
           if (typeof data?.id === 'number') {
             setCurrentHlsAudioTrack(data.id);
+            if (hls.audioTracks && hls.audioTracks[data.id]) {
+              const track = hls.audioTracks[data.id];
+              const rawName = (track.name || track.lang || '').trim();
+              const detected = parseWordToLanguage(rawName);
+              if (detected) {
+                setActiveLanguage(detected);
+              }
+            }
           }
         });
 

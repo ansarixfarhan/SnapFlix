@@ -1304,30 +1304,58 @@ export default function NativeWebPlayer({
     setShowMobileDrawer(false);
   };
 
-  // Memoized stream lists for Server Switcher
-  const vidlyStreams = useMemo(() => {
-    const list: StreamItem[] = [];
+  interface UniqueServerOption {
+    id: string;
+    name: string;
+    provider: 'vidly' | 'vidy';
+    streams: StreamItem[];
+  }
+
+  // Deduplicated servers list (each server appears exactly once)
+  const availableServers = useMemo<UniqueServerOption[]>(() => {
+    const list: UniqueServerOption[] = [];
+    const seen = new Set<string>();
+
     vidlyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
-        if (isPlayableStream(s)) {
-          list.push({ ...s, providerName: prov.providerName });
+        if (!isPlayableStream(s)) return;
+        const name = s.server || 'Vidly Edge';
+        const key = `vidly-${name}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push({
+            id: key,
+            name,
+            provider: 'vidly',
+            streams: [{ ...s, providerName: prov.providerName }],
+          });
+        } else {
+          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
         }
       });
     });
-    return list;
-  }, [vidlyResults]);
 
-  const vidyStreams = useMemo(() => {
-    const list: StreamItem[] = [];
     vidyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
-        if (isPlayableStream(s)) {
-          list.push({ ...s, providerName: prov.providerName });
+        if (!isPlayableStream(s)) return;
+        const name = s.server || 'Vidy Dedicated Node';
+        const key = `vidy-${name}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push({
+            id: key,
+            name,
+            provider: 'vidy',
+            streams: [{ ...s, providerName: prov.providerName }],
+          });
+        } else {
+          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
         }
       });
     });
+
     return list;
-  }, [vidyResults]);
+  }, [vidlyResults, vidyResults]);
 
   // Handle Manual Server Switching between Vidly and Vidy
   const handleSelectServer = (targetProvider: 'vidly' | 'vidy', stream: StreamItem) => {
@@ -1360,6 +1388,25 @@ export default function NativeWebPlayer({
     setShowServerQualityMenu(false);
     setShowMobileDrawer(false);
     triggerControls();
+  };
+
+  const handleSelectServerOption = (server: UniqueServerOption) => {
+    const isCurrentActive =
+      server.streams.some((s) => s.link === selectedStream?.link) ||
+      (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+
+    if (isCurrentActive) {
+      setShowServerQualityMenu(false);
+      setShowMobileDrawer(false);
+      return;
+    }
+
+    const targetStream =
+      (selectedQuality !== 'auto'
+        ? server.streams.find((s) => (s.quality || '').toLowerCase().includes(selectedQuality.replace('p', '')))
+        : null) || server.streams[0];
+
+    handleSelectServer(server.provider, targetStream);
   };
 
   // Aggregated qualities across all providers for CURRENT activeLanguage
@@ -1407,28 +1454,23 @@ export default function NativeWebPlayer({
       });
     });
 
-    const options: {
-      key: string;
-      label: string;
-      badge?: string;
-      category: 'dynamic' | 'hd' | 'sd';
-    }[] = [
-      { key: 'auto', label: 'Auto (ABR)', badge: 'Optimal', category: 'dynamic' },
+    const options: { key: string; label: string }[] = [
+      { key: 'auto', label: 'Auto' },
     ];
 
     if (discovered.has('2160p')) {
-      options.push({ key: '2160p', label: '4K (2160p)', badge: 'Ultra HD', category: 'hd' });
+      options.push({ key: '2160p', label: '4K' });
     }
     if (discovered.has('1080p') || options.length === 1) {
-      options.push({ key: '1080p', label: '1080p', badge: 'Full HD', category: 'hd' });
+      options.push({ key: '1080p', label: '1080p' });
     }
     if (discovered.has('720p')) {
-      options.push({ key: '720p', label: '720p', badge: 'HD', category: 'sd' });
+      options.push({ key: '720p', label: '720p' });
     }
     if (discovered.has('480p')) {
-      options.push({ key: '480p', label: '480p', badge: 'SD', category: 'sd' });
+      options.push({ key: '480p', label: '480p' });
     } else if (discovered.has('360p')) {
-      options.push({ key: '360p', label: '360p', badge: 'Data Saver', category: 'sd' });
+      options.push({ key: '360p', label: '360p' });
     }
 
     return options;
@@ -3101,328 +3143,113 @@ export default function NativeWebPlayer({
 
         {/* Top-Right Actions: Servers + Quality + Audio & Subtitles + Next Episode */}
         <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto">
-          {/* Unified Server & Quality Button with 2-Column Popover */}
+          {/* Server & Quality Button with 2-Column Popover */}
           <div
             className="relative"
             ref={serverQualityMenuRef}
             onMouseEnter={handleServerQualityMouseEnter}
             onMouseLeave={handleServerQualityMouseLeave}
           >
-            {/* Unified Pill Button with Center Partition Line */}
-            <div className="flex items-center rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-xs font-semibold text-white/90 backdrop-blur-md shadow-md shrink-0 pointer-events-auto transition">
-              {/* Left Side: Server */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isMobileScreen()) {
-                    setMobileDrawerTab('servers');
-                    setShowMobileDrawer(true);
-                    return;
-                  }
-                  if (serverQualityMenuTimeoutRef.current) clearTimeout(serverQualityMenuTimeoutRef.current);
-                  setShowAudioMenu(false);
-                  setShowNextEpPreview(false);
-                  setShowServerQualityMenu((prev) => !prev);
-                  triggerControls();
-                }}
-                className="flex items-center gap-1.5 pl-2.5 sm:pl-3 pr-2 py-1.5 hover:text-white rounded-l-full hover:bg-white/10 transition cursor-pointer active:scale-95"
-                title="Switch Streaming Server"
-              >
-                <IoServerOutline size={15} className="text-white/80" />
-                <span className="hidden sm:inline">Server</span>
-                <span className="hidden md:inline text-gray-300 font-normal">
-                  {activeServerProvider === 'vidly' ? 'Vidly' : 'Vidy'}
-                </span>
-              </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isMobileScreen()) {
+                  setMobileDrawerTab('servers');
+                  setShowMobileDrawer(true);
+                  return;
+                }
+                if (serverQualityMenuTimeoutRef.current) clearTimeout(serverQualityMenuTimeoutRef.current);
+                setShowAudioMenu(false);
+                setShowNextEpPreview(false);
+                setShowServerQualityMenu((prev) => !prev);
+                triggerControls();
+              }}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-xs font-semibold text-white/90 hover:text-white transition cursor-pointer backdrop-blur-md active:scale-95 shadow-md shrink-0 pointer-events-auto"
+              title="Server & Quality"
+            >
+              <IoServerOutline size={15} className="text-white/80" />
+              <span className="hidden sm:inline">Server & Quality</span>
+            </button>
 
-              {/* Center Partition Line */}
-              <div className="w-[1px] h-3.5 bg-white/20 shrink-0" />
-
-              {/* Right Side: Quality */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isMobileScreen()) {
-                    setMobileDrawerTab('quality');
-                    setShowMobileDrawer(true);
-                    return;
-                  }
-                  if (serverQualityMenuTimeoutRef.current) clearTimeout(serverQualityMenuTimeoutRef.current);
-                  setShowAudioMenu(false);
-                  setShowNextEpPreview(false);
-                  setShowServerQualityMenu((prev) => !prev);
-                  triggerControls();
-                }}
-                className="flex items-center gap-1.5 pl-2 pr-2.5 sm:pr-3 py-1.5 hover:text-white rounded-r-full hover:bg-white/10 transition cursor-pointer active:scale-95"
-                title="Change Video Quality"
-              >
-                <IoTvOutline size={15} className="text-white/80" />
-                <span className="hidden sm:inline">Quality</span>
-                <span className="hidden md:inline text-gray-300 font-normal">
-                  {selectedQuality === 'auto' ? 'Auto' : selectedQuality}
-                </span>
-              </button>
-            </div>
-
-            {/* 2-Column Netflix-Style Popover: Server on Left, Vertical Divider, Quality on Right */}
+            {/* Netflix-style 2-Column Server & Quality Popover Window - Desktop (sm+) */}
             {showServerQualityMenu && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="hidden sm:flex absolute top-full right-0 mt-2.5 w-[520px] md:w-[560px] bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_50px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-3.5 z-50 flex-row overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
+                className="hidden sm:flex absolute top-full right-0 mt-2.5 w-[460px] md:w-[480px] bg-[#141414]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_50px_rgba(0,0,0,0.95)] ring-1 ring-white/5 p-3.5 z-50 flex-row overflow-hidden text-white animate-in fade-in zoom-in-95 duration-150"
               >
-                {/* Left Column: Streaming Servers */}
+                {/* Left Column: Server */}
                 <div className="flex-1 flex flex-col min-w-0 pr-3">
-                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center justify-between mb-1.5 shrink-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
-                      <span>Servers</span>
-                    </div>
-                    <span className="text-[9px] font-mono text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">
-                      {activeServerProvider === 'vidly' ? 'Vidly Active' : 'Vidy Active'}
-                    </span>
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1.5 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
+                    <span>Server</span>
                   </div>
 
-                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-2.5 p-0.5 pr-1">
-                    {/* Vidly Edge Section */}
-                    <div>
-                      <div className="px-1.5 pb-1 text-[9.5px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          <span>Vidly Edge (Primary)</span>
-                        </div>
-                        <span className="text-[9px] text-emerald-400 font-medium">Multi-Audio</span>
-                      </div>
-                      <div className="space-y-1">
-                        {vidlyStreams.length > 0 ? (
-                          vidlyStreams.map((s, idx) => {
-                            const isSelected = activeServerProvider === 'vidly' && selectedStream?.link === s.link;
-                            return (
-                              <button
-                                key={`vidly-${idx}-${s.link}`}
-                                type="button"
-                                onClick={() => handleSelectServer('vidly', s)}
-                                className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between transition cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
-                                    : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="w-3.5 text-center shrink-0">
-                                    {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
-                                  </span>
-                                  <div className="truncate min-w-0">
-                                    <span className="text-[11px] block font-medium truncate">{s.server || 'Vidly Master Edge'}</span>
-                                    <span className="text-[9px] text-gray-400 block truncate">Adaptive HLS • Cloudflare</span>
-                                  </div>
-                                </div>
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 font-medium">
-                                  Fast
-                                </span>
-                              </button>
-                            );
-                          })
-                        ) : (
-                          <div className="px-2.5 py-2 text-[11px] text-gray-500 italic">No Vidly edge streams available</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="h-[1px] bg-white/10 mx-1" />
-
-                    {/* Vidy Dedicated VPS Section */}
-                    <div>
-                      <div className="px-1.5 pb-1 text-[9.5px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                          <span>Vidy Dedicated (VPS)</span>
-                        </div>
-                        <span className="text-[9px] text-blue-400 font-medium">Direct Nodes</span>
-                      </div>
-                      <div className="space-y-1">
-                        {vidyStreams.length > 0 ? (
-                          vidyStreams.map((s, idx) => {
-                            const isSelected = activeServerProvider === 'vidy' && selectedStream?.link === s.link;
-                            return (
-                              <button
-                                key={`vidy-${idx}-${s.link}`}
-                                type="button"
-                                onClick={() => handleSelectServer('vidy', s)}
-                                className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between transition cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
-                                    : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="w-3.5 text-center shrink-0">
-                                    {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
-                                  </span>
-                                  <div className="truncate min-w-0">
-                                    <span className="text-[11px] block font-medium truncate">{s.server || 'Vidy Dedicated Node'}</span>
-                                    <span className="text-[9px] text-gray-400 block truncate">
-                                      {s.quality || 'HD'} • Dedicated VPS
-                                    </span>
-                                  </div>
-                                </div>
-                                {s.quality && (
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 font-medium">
-                                    {s.quality}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })
-                        ) : (
-                          <div className="px-2.5 py-2 text-[11px] text-gray-500 italic flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-amber-400/60 animate-ping" />
-                            <span>Connecting to Vidy VPS...</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-0.5 p-0.5 pr-1">
+                    {availableServers.length > 0 ? (
+                      availableServers.map((server) => {
+                        const isActive =
+                          server.streams.some((s) => s.link === selectedStream?.link) ||
+                          (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+                        return (
+                          <button
+                            key={server.id}
+                            type="button"
+                            onClick={() => handleSelectServerOption(server)}
+                            className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${
+                              isActive
+                                ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
+                                : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-3.5 text-center shrink-0">
+                                {isActive && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
+                              </span>
+                              <span className="text-[11px] font-medium truncate">{server.name}</span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-2.5 py-2 text-[11px] text-gray-500 italic">No servers available</div>
+                    )}
                   </div>
                 </div>
 
                 {/* Vertical Partition / Divider */}
                 <div className="w-[1px] bg-white/10 self-stretch my-1 shrink-0" />
 
-                {/* Right Column: Video Quality */}
+                {/* Right Column: Quality */}
                 <div className="flex-1 flex flex-col min-w-0 pl-3">
-                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center justify-between mb-1.5 shrink-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
-                      <span>Quality</span>
-                    </div>
-                    <span className="text-[9px] font-mono text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">
-                      {selectedQuality === 'auto' ? 'Auto' : selectedQuality}
-                    </span>
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-gray-300 uppercase tracking-wider border-b border-white/10 flex items-center gap-1.5 mb-1.5 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] shrink-0" />
+                    <span>Quality</span>
                   </div>
 
-                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-2 p-0.5 pr-1">
-                    {/* Adaptive Bitrate */}
-                    <div>
-                      <div className="px-1.5 pb-1 text-[9.5px] font-bold text-gray-400 uppercase tracking-wider">
-                        Adaptive Bitrate
-                      </div>
-                      <div className="space-y-0.5">
-                        {availableQualities.filter(q => q.category === 'dynamic').map((q) => {
-                          const isSelected = selectedQuality === q.key;
-                          return (
-                            <button
-                              key={q.key}
-                              type="button"
-                              onClick={() => {
-                                handleSelectQuality(q.key);
-                              }}
-                              className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between transition cursor-pointer ${
-                                isSelected
-                                  ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
-                                  : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="w-3.5 text-center shrink-0">
-                                  {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
-                                </span>
-                                <span className="font-medium text-[11px] truncate">{q.label}</span>
-                              </div>
-                              {q.badge && (
-                                <span className="px-1.5 py-0.2 bg-emerald-500/15 text-[9px] text-emerald-400 border border-emerald-500/20 rounded font-normal shrink-0">
-                                  {q.badge}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* High Definition */}
-                    {availableQualities.some(q => q.category === 'hd') && (
-                      <div>
-                        <div className="h-[1px] bg-white/10 mx-1 mb-1.5" />
-                        <div className="px-1.5 pb-1 text-[9.5px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                          <span>High Definition</span>
-                          <span className="text-[9px] text-gray-400 font-mono">1080p+</span>
-                        </div>
-                        <div className="space-y-0.5">
-                          {availableQualities.filter(q => q.category === 'hd').map((q) => {
-                            const isSelected = selectedQuality === q.key;
-                            return (
-                              <button
-                                key={q.key}
-                                type="button"
-                                onClick={() => {
-                                  handleSelectQuality(q.key);
-                                }}
-                                className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between transition cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
-                                    : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="w-3.5 text-center shrink-0">
-                                    {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
-                                  </span>
-                                  <span className="font-medium text-[11px] truncate">{q.label}</span>
-                                </div>
-                                {q.badge && (
-                                  <span className="px-1.5 py-0.2 bg-white/10 text-[9px] text-gray-300 rounded font-normal shrink-0">
-                                    {q.badge}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Standard Definition */}
-                    {availableQualities.some(q => q.category === 'sd') && (
-                      <div>
-                        <div className="h-[1px] bg-white/10 mx-1 mb-1.5" />
-                        <div className="px-1.5 pb-1 text-[9.5px] font-bold text-gray-400 uppercase tracking-wider">
-                          Standard Definition
-                        </div>
-                        <div className="space-y-0.5">
-                          {availableQualities.filter(q => q.category === 'sd').map((q) => {
-                            const isSelected = selectedQuality === q.key;
-                            return (
-                              <button
-                                key={q.key}
-                                type="button"
-                                onClick={() => {
-                                  handleSelectQuality(q.key);
-                                }}
-                                className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between transition cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
-                                    : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="w-3.5 text-center shrink-0">
-                                    {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
-                                  </span>
-                                  <span className="font-medium text-[11px] truncate">{q.label}</span>
-                                </div>
-                                {q.badge && (
-                                  <span className="px-1.5 py-0.2 bg-white/10 text-[9px] text-gray-400 rounded font-normal shrink-0">
-                                    {q.badge}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                  <div className="max-h-[min(300px,calc(100vh-160px))] overflow-y-auto space-y-0.5 p-0.5 pr-1">
+                    {availableQualities.map((q) => {
+                      const isSelected = selectedQuality === q.key;
+                      return (
+                        <button
+                          key={q.key}
+                          type="button"
+                          onClick={() => handleSelectQuality(q.key)}
+                          className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
+                              : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-3.5 text-center shrink-0">
+                              {isSelected && <IoCheckmark size={14} className="text-[#E50914] inline font-bold" />}
+                            </span>
+                            <span className="text-[11px] font-medium truncate">{q.label}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -4095,7 +3922,7 @@ export default function NativeWebPlayer({
                       : "text-gray-400 hover:text-white"
                   )}
                 >
-                  Server ({activeServerProvider === 'vidly' ? 'Vidly' : 'Vidy'})
+                  Server
                 </button>
                 <button
                   type="button"
@@ -4107,7 +3934,7 @@ export default function NativeWebPlayer({
                       : "text-gray-400 hover:text-white"
                   )}
                 >
-                  Quality ({selectedQuality === 'auto' ? 'Auto' : selectedQuality})
+                  Quality
                 </button>
                 <button
                   type="button"
@@ -4158,237 +3985,71 @@ export default function NativeWebPlayer({
               </div>
             </div>
 
-            {/* Tab: Servers (Partitioned Vidly vs Vidy) */}
+            {/* Tab: Server */}
             {mobileDrawerTab === 'servers' && (
-              <div className="overflow-y-auto space-y-3 pr-0.5 max-h-[250px]">
-                {/* 1. Vidly Edge Section */}
-                <div>
-                  <div className="px-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      <span>Vidly Edge (Primary)</span>
-                    </div>
-                    <span className="text-[9px] text-emerald-400 font-medium">Multi-Audio</span>
-                  </div>
-                  <div className="space-y-1">
-                    {vidlyStreams.length > 0 ? (
-                      vidlyStreams.map((s, idx) => {
-                        const isSelected = activeServerProvider === 'vidly' && selectedStream?.link === s.link;
-                        return (
-                          <button
-                            key={`mobile-vidly-${idx}-${s.link}`}
-                            type="button"
-                            onClick={() => handleSelectServer('vidly', s)}
-                            className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                              isSelected
-                                ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                                : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="w-4 text-center shrink-0">
-                                {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                              </span>
-                              <div className="truncate min-w-0">
-                                <span className="text-xs block font-medium truncate">{s.server || 'Vidly Master Edge'}</span>
-                                <span className="text-[9px] text-gray-400 block truncate">Adaptive HLS • Cloudflare Edge</span>
-                              </div>
-                            </div>
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 font-medium">
-                              Fast
-                            </span>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="px-3 py-2 text-xs text-gray-400 italic">No Vidly edge streams available</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="h-[1px] bg-white/10" />
-
-                {/* 2. Vidy Dedicated VPS Section */}
-                <div>
-                  <div className="px-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                      <span>Vidy Dedicated (VPS)</span>
-                    </div>
-                    <span className="text-[9px] text-blue-400 font-medium">Direct Nodes</span>
-                  </div>
-                  <div className="space-y-1">
-                    {vidyStreams.length > 0 ? (
-                      vidyStreams.map((s, idx) => {
-                        const isSelected = activeServerProvider === 'vidy' && selectedStream?.link === s.link;
-                        return (
-                          <button
-                            key={`mobile-vidy-${idx}-${s.link}`}
-                            type="button"
-                            onClick={() => handleSelectServer('vidy', s)}
-                            className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                              isSelected
-                                ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                                : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="w-4 text-center shrink-0">
-                                {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                              </span>
-                              <div className="truncate min-w-0">
-                                <span className="text-xs block font-medium truncate">{s.server || 'Vidy Dedicated Node'}</span>
-                                <span className="text-[9px] text-gray-400 block truncate">
-                                  {s.quality || 'HD'} • Dedicated VPS
-                                </span>
-                              </div>
-                            </div>
-                            {s.quality && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 font-medium">
-                                {s.quality}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="px-3 py-2 text-xs text-gray-400 italic flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-amber-400/60 animate-ping" />
-                        <span>Connecting to Vidy VPS...</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+              <div className="space-y-1 overflow-y-auto max-h-[250px] pr-0.5">
+                {availableServers.length > 0 ? (
+                  availableServers.map((server) => {
+                    const isActive =
+                      server.streams.some((s) => s.link === selectedStream?.link) ||
+                      (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+                    return (
+                      <button
+                        key={`mobile-server-${server.id}`}
+                        type="button"
+                        onClick={() => {
+                          handleSelectServerOption(server);
+                          setShowMobileDrawer(false);
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                          isActive
+                            ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                            : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-4 text-center shrink-0">
+                            {isActive && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                          </span>
+                          <span className="text-xs font-medium truncate">{server.name}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-2 text-xs text-gray-400 italic">No servers available</div>
+                )}
               </div>
             )}
 
-            {/* Tab: Quality (Partitioned) */}
+            {/* Tab: Quality */}
             {mobileDrawerTab === 'quality' && (
-              <div className="overflow-y-auto space-y-3 pr-0.5 max-h-[250px]">
-                {/* 1. Dynamic / Auto */}
-                <div>
-                  <div className="px-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    Adaptive Bitrate
-                  </div>
-                  <div className="space-y-1">
-                    {availableQualities.filter(q => q.category === 'dynamic').map((q) => {
-                      const isSelected = selectedQuality === q.key;
-                      return (
-                        <button
-                          key={`mobile-q-${q.key}`}
-                          type="button"
-                          onClick={() => {
-                            handleSelectQuality(q.key);
-                            setShowMobileDrawer(false);
-                          }}
-                          className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                            isSelected
-                              ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                              : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="w-4 text-center shrink-0">
-                              {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                            </span>
-                            <span className="text-xs font-medium truncate">{q.label}</span>
-                          </div>
-                          {q.badge && (
-                            <span className="px-1.5 py-0.2 bg-emerald-500/15 text-[9px] text-emerald-400 border border-emerald-500/20 rounded font-normal shrink-0">
-                              {q.badge}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 2. High Definition */}
-                {availableQualities.some(q => q.category === 'hd') && (
-                  <div>
-                    <div className="h-[1px] bg-white/10 mb-2" />
-                    <div className="px-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                      <span>High Definition</span>
-                      <span className="text-[9px] text-gray-400 font-mono">1080p+</span>
-                    </div>
-                    <div className="space-y-1">
-                      {availableQualities.filter(q => q.category === 'hd').map((q) => {
-                        const isSelected = selectedQuality === q.key;
-                        return (
-                          <button
-                            key={`mobile-q-${q.key}`}
-                            type="button"
-                            onClick={() => {
-                              handleSelectQuality(q.key);
-                              setShowMobileDrawer(false);
-                            }}
-                            className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                              isSelected
-                                ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                                : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="w-4 text-center shrink-0">
-                                {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                              </span>
-                              <span className="text-xs font-medium truncate">{q.label}</span>
-                            </div>
-                            {q.badge && (
-                              <span className="px-1.5 py-0.2 bg-white/10 text-[9px] text-gray-300 rounded font-normal shrink-0">
-                                {q.badge}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. Standard Definition */}
-                {availableQualities.some(q => q.category === 'sd') && (
-                  <div>
-                    <div className="h-[1px] bg-white/10 mb-2" />
-                    <div className="px-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                      Standard Definition
-                    </div>
-                    <div className="space-y-1">
-                      {availableQualities.filter(q => q.category === 'sd').map((q) => {
-                        const isSelected = selectedQuality === q.key;
-                        return (
-                          <button
-                            key={`mobile-q-${q.key}`}
-                            type="button"
-                            onClick={() => {
-                              handleSelectQuality(q.key);
-                              setShowMobileDrawer(false);
-                            }}
-                            className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                              isSelected
-                                ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
-                                : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="w-4 text-center shrink-0">
-                                {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
-                              </span>
-                              <span className="text-xs font-medium truncate">{q.label}</span>
-                            </div>
-                            {q.badge && (
-                              <span className="px-1.5 py-0.2 bg-white/10 text-[9px] text-gray-400 rounded font-normal shrink-0">
-                                {q.badge}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+              <div className="space-y-1 overflow-y-auto max-h-[250px] pr-0.5">
+                {availableQualities.map((q) => {
+                  const isSelected = selectedQuality === q.key;
+                  return (
+                    <button
+                      key={`mobile-q-${q.key}`}
+                      type="button"
+                      onClick={() => {
+                        handleSelectQuality(q.key);
+                        setShowMobileDrawer(false);
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
+                        isSelected
+                          ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
+                          : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-4 text-center shrink-0">
+                          {isSelected && <IoCheckmark size={15} className="text-[#E50914] font-black inline" />}
+                        </span>
+                        <span className="text-xs font-medium truncate">{q.label}</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
 

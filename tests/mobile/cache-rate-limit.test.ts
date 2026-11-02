@@ -108,3 +108,14 @@ test("optional app key uses a length-checked comparison and is opt-in", () => {
     else process.env.MOBILE_API_KEY = previous;
   }
 });
+
+test("cache.run can choose a data-dependent TTL", async () => {
+  const cache = createMobileCache();
+  const value = await cache.run(
+    "dynamic-ttl",
+    (result: string) => (result === "do-not-cache" ? 0 : 5_000),
+    async () => "do-not-cache",
+  );
+  assert.equal(value, "do-not-cache");
+  assert.equal(cache.get("dynamic-ttl"), undefined);
+});

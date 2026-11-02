@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildDiscoverEndpoint,
   buildEpisodeGroupEndpoint,
   buildEpisodesEndpoint,
   buildListEndpoint,
   collectionRequest,
   parseDetailsParams,
+  parseDiscoverParams,
   parseEpisodeGroupParams,
   parseEpisodesParams,
+  parseFindParams,
+  parseGenresParams,
   parseHomeParams,
   parseListParams,
   parseSearchParams,
@@ -95,4 +99,71 @@ test("only fixed TMDB collection paths can be requested", () => {
     buildEpisodeGroupEndpoint("g1"),
     "/api/mobile/v1/episode-groups?groupId=g1",
   );
+});
+
+test("genre Discover accepts compatibility aliases and canonicalizes fixed query values", () => {
+  const params = new URLSearchParams(
+    "mediaType=tv&with_genres=28,12&sort_by=vote_average.desc&page=2",
+  );
+  assert.deepEqual(value(parseDiscoverParams(params)), {
+    content: "tv",
+    genreIds: [12, 28],
+    withGenres: "12,28",
+    sortBy: "vote_average.desc",
+    page: 2,
+  });
+
+  const repeated = new URLSearchParams("content=movie&genres=28&genres=12&sort=popularity.asc");
+  assert.deepEqual(value(parseDiscoverParams(repeated)), {
+    content: "movie",
+    genreIds: [12, 28],
+    withGenres: "12,28",
+    sortBy: "popularity.asc",
+    page: 1,
+  });
+
+  assert.equal(parseDiscoverParams(new URLSearchParams("content=movie&type=tv")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("genres=28|12")).ok, true);
+  assert.equal(
+    parseDiscoverParams(new URLSearchParams("genres=28,12&genre=18|35")).ok,
+    false,
+  );
+  assert.equal(parseDiscoverParams(new URLSearchParams("genres=abc")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("sortBy=revenue.desc")).ok, false);
+  assert.equal(
+    parseDiscoverParams(new URLSearchParams(`genres=${Array.from({ length: 11 }, (_, i) => i + 1).join(",")}`)).ok,
+    false,
+  );
+
+  assert.equal(
+    buildDiscoverEndpoint("movie", "12,28", "vote_average.desc", 3),
+    "/api/mobile/v1/discover?content=movie&sortBy=vote_average.desc&page=3&genres=12%2C28",
+  );
+});
+
+test("genre list and IMDb lookup compatibility params are strictly validated", () => {
+  assert.deepEqual(value(parseGenresParams(new URLSearchParams("type=tv"))), { content: "tv" });
+  assert.equal(parseGenresParams(new URLSearchParams("content=movie&mediaType=tv")).ok, false);
+
+  assert.deepEqual(
+    value(parseFindParams(new URLSearchParams("imdbId=tt1234567&mediaType=movie"))),
+    { imdbId: "tt1234567", mediaType: "movie", externalSource: "imdb_id" },
+  );
+  assert.deepEqual(
+    value(parseFindParams(new URLSearchParams("imdb_id=1234567&external_source=imdb_id"))),
+    { imdbId: "tt1234567", mediaType: "multi", externalSource: "imdb_id" },
+  );
+  assert.deepEqual(
+    value(parseFindParams(new URLSearchParams(), "tt7654321")),
+    { imdbId: "tt7654321", mediaType: "multi", externalSource: "imdb_id" },
+  );
+
+  assert.equal(
+    parseFindParams(new URLSearchParams("imdbId=tt1234567"), "tt7654321").ok,
+    false,
+  );
+  assert.equal(parseFindParams(new URLSearchParams("imdbId=nm1234567")).ok, false);
+  assert.equal(parseFindParams(new URLSearchParams("imdbId=tt123")).ok, false);
+  assert.equal(parseFindParams(new URLSearchParams("imdbId=tt1234567&externalSource=tvdb_id")).ok, false);
+  assert.equal(parseFindParams(new URLSearchParams("imdbId=tt1234567&type=person")).ok, false);
 });

@@ -141,3 +141,26 @@ test("network aborts are reported as upstream timeouts", async () => {
       error.retryable === true,
   );
 });
+
+test("discover and find query keys are allowlisted and passed upstream safely", async () => {
+  const capturedUrls: URL[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrls.push(new URL(String(input)));
+    return jsonResponse({ page: 1, results: [] });
+  }) as typeof fetch;
+
+  await mobileTmdbGet(
+    "/discover/movie",
+    { page: 2, include_adult: false, with_genres: "12,28", sort_by: "vote_average.desc" },
+    600,
+  );
+  await mobileTmdbGet("/find/tt1234567", { external_source: "imdb_id" }, 600);
+
+  assert.equal(capturedUrls.length, 2);
+  assert.equal(capturedUrls[0].pathname, "/3/discover/movie");
+  assert.equal(capturedUrls[0].searchParams.get("with_genres"), "12,28");
+  assert.equal(capturedUrls[0].searchParams.get("sort_by"), "vote_average.desc");
+  assert.equal(capturedUrls[0].searchParams.get("include_adult"), "false");
+  assert.equal(capturedUrls[1].pathname, "/3/find/tt1234567");
+  assert.equal(capturedUrls[1].searchParams.get("external_source"), "imdb_id");
+});

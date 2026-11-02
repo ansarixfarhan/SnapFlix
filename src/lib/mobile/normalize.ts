@@ -3,6 +3,7 @@ import {
   CREW_LIMIT,
   IMAGE_LIMIT,
   KEYWORD_LIMIT,
+  MAX_FIND_RESULTS_PER_TYPE,
   MAX_PAGE,
   MAX_SEASON_NUMBER,
   MAX_TMDB_ID,
@@ -38,6 +39,8 @@ import type {
   MobileEpisodeGroupSummary,
   MobileEpisodesResponse,
   MobileExternalIds,
+  MobileFindCard,
+  MobileFindResponse,
   MobileGenre,
   MobileImage,
   MobileKeyword,
@@ -50,6 +53,7 @@ import type {
 import {
   buildEpisodeGroupEndpoint,
   buildEpisodesEndpoint,
+  type FindParams,
 } from "./validation";
 import {
   getSeasonGroupIdToSplit,
@@ -179,7 +183,7 @@ function normalizeCrew(value: unknown): MobileCrewMember[] {
     }));
 }
 
-function normalizeGenres(value: unknown): MobileGenre[] {
+export function normalizeGenres(value: unknown): MobileGenre[] {
   return asRecordArray(value)
     .slice(0, 30)
     .map((raw) => ({
@@ -218,6 +222,95 @@ function normalizeKeywords(value: unknown): MobileKeyword[] {
       id: asInteger(raw.id, 0, 0, MAX_TMDB_ID),
       name: scalarText(raw.name, 100),
     }));
+}
+
+export function normalizeFindCard(
+  raw: RawRecord,
+  hint?: MediaType,
+): MobileFindCard | null {
+  const card = normalizeCard(raw, hint);
+  if (!card) return null;
+
+  const title = scalarText(raw.title ?? raw.name ?? card.title, 300) || card.title;
+  const name = scalarText(raw.name ?? raw.title ?? card.title, 300) || card.title;
+  const releaseDate = safeDate(raw.release_date ?? raw.first_air_date) || card.releaseDate;
+  const firstAirDate =
+    safeDate(raw.first_air_date) || (card.mediaType === "tv" ? releaseDate : "");
+  const posterPath = card.posterPath ?? safeImagePath(raw.still_path);
+
+  return {
+    ...card,
+    title,
+    name,
+    media_type: card.mediaType,
+    original_title: scalarText(raw.original_title ?? card.originalTitle, 300),
+    original_name: scalarText(raw.original_name ?? card.originalTitle, 300),
+    poster_path: posterPath,
+    backdrop_path: card.backdropPath,
+    release_date: releaseDate,
+    first_air_date: firstAirDate,
+    vote_average: card.voteAverage,
+    vote_count: card.voteCount,
+    genre_ids: card.genreIds,
+    original_language: card.originalLanguage,
+  };
+}
+
+export function normalizeFindResults(value: unknown, hint?: MediaType): MobileFindCard[] {
+  const seen = new Set<string>();
+  const results: MobileFindCard[] = [];
+  for (const raw of asRecordArray(value).slice(0, MAX_FIND_RESULTS_PER_TYPE)) {
+    const card = normalizeFindCard(raw, hint);
+    if (!card) continue;
+    const key = `${card.mediaType}:${card.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(card);
+  }
+  return results;
+}
+
+export function normalizeFindResponse(
+  raw: RawRecord,
+  params: FindParams,
+): MobileFindResponse {
+  const movieResults = normalizeFindResults(raw.movie_results, "movie");
+  const tvResults = normalizeFindResults(raw.tv_results, "tv");
+  const tvEpisodeResults = normalizeFindResults(raw.tv_episode_results, "tv");
+  const tvSeasonResults = normalizeFindResults(raw.tv_season_results, "tv");
+
+  const combinedSeen = new Set<string>();
+  const primaryResults: MobileFindCard[] = [];
+  for (const card of [...movieResults, ...tvResults]) {
+    const key = `${card.mediaType}:${card.id}`;
+    if (combinedSeen.has(key)) continue;
+    combinedSeen.add(key);
+    primaryResults.push(card);
+  }
+
+  const results =
+    params.mediaType === "movie"
+      ? movieResults
+      : params.mediaType === "tv"
+        ? tvResults
+        : primaryResults;
+  const match = results[0] ?? null;
+
+  return {
+    imdbId: params.imdbId,
+    externalSource: "imdb_id",
+    external_source: "imdb_id",
+    requestedMediaType: params.mediaType,
+    mediaType: match?.mediaType ?? null,
+    tmdbId: match?.id ?? null,
+    match,
+    results,
+    movie_results: movieResults,
+    tv_results: tvResults,
+    tv_episode_results: tvEpisodeResults,
+    tv_season_results: tvSeasonResults,
+    person_results: [],
+  };
 }
 
 function normalizeExternalIds(raw: RawRecord): MobileExternalIds {

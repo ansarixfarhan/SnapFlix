@@ -1,10 +1,15 @@
 import {
+  DEFAULT_SORT_BY,
+  MAX_GENRE_ID,
+  MAX_GENRE_IDS,
   MAX_GROUP_ID_LENGTH,
   MAX_PAGE,
   MAX_SEARCH_LENGTH,
   MAX_SEASON_NUMBER,
   MAX_TMDB_ID,
   MOBILE_API_PREFIX,
+  VALID_SORT_BY,
+  type MobileDiscoverSortBy,
 } from "./constants";
 import { cleanText, hasControlCharacters, safeGroupId } from "./text";
 import type {
@@ -27,6 +32,19 @@ export type SearchParams = { q: string; type: MobileSearchType; page: number };
 export type DetailsParams = { mediaType: MediaType; id: number };
 export type EpisodesParams = { tvId: number; season: number };
 export type EpisodeGroupParams = { groupId: string };
+export type DiscoverParams = {
+  content: MediaType;
+  genreIds: number[];
+  withGenres: string;
+  sortBy: MobileDiscoverSortBy;
+  page: number;
+};
+export type GenresParams = { content: MediaType };
+export type FindParams = {
+  imdbId: string;
+  mediaType: MobileSearchType;
+  externalSource: "imdb_id";
+};
 
 export type MobileTmdbRequest = {
   path: string;
@@ -38,9 +56,35 @@ const INVALID_PAGE = "Page must be an integer between 1 and 500.";
 const INVALID_MEDIA_TYPE = "mediaType must be either movie or tv.";
 const INVALID_ID = "A valid TMDB id is required.";
 const INVALID_SEASON = "Season must be an integer between 0 and 999.";
+const INVALID_GENRES = "Genres must be a short list of numeric TMDB genre ids.";
+const INVALID_SORT = "sortBy must be one of the supported TMDB sort values.";
+const INVALID_IMDB_ID = "A valid IMDb title id is required.";
 
 const MEDIA_TYPES: readonly MediaType[] = ["movie", "tv"];
 const SEARCH_TYPES: readonly MobileSearchType[] = ["multi", "movie", "tv"];
+const DISCOVER_PARAM_NAMES = [
+  "content",
+  "mediaType",
+  "type",
+  "genres",
+  "with_genres",
+  "genre",
+  "page",
+  "sortBy",
+  "sort_by",
+  "sort",
+] as const;
+const FIND_PARAM_NAMES = [
+  "imdbId",
+  "imdb_id",
+  "externalId",
+  "id",
+  "externalSource",
+  "external_source",
+  "content",
+  "mediaType",
+  "type",
+] as const;
 
 export const HOME_COLLECTIONS: Record<
   MediaType,
@@ -92,14 +136,16 @@ const COLLECTION_TITLES: Record<MediaType, Partial<Record<MobileCollection, stri
 export function validateAllowedParams(
   params: QueryLike,
   allowed: readonly string[],
+  allowRepeated: readonly string[] = [],
 ): string | null {
   const allowedSet = new Set(allowed);
+  const repeatedSet = new Set(allowRepeated);
   const keys = [...new Set(params.keys())];
 
   if (keys.length > allowed.length) return INVALID_PARAMS;
   for (const key of keys) {
     if (!allowedSet.has(key)) return INVALID_PARAMS;
-    if (params.getAll(key).length > 1) return INVALID_PARAMS;
+    if (!repeatedSet.has(key) && params.getAll(key).length > 1) return INVALID_PARAMS;
   }
   return null;
 }
@@ -107,6 +153,34 @@ export function validateAllowedParams(
 function one(params: QueryLike, name: string): string | null {
   const values = params.getAll(name);
   return values.length === 0 ? null : values[0];
+}
+
+function aliasValues(params: QueryLike, names: readonly string[]): string[] {
+  const values: string[] = [];
+  for (const name of names) {
+    for (const raw of params.getAll(name)) {
+      const value = raw.trim();
+      if (value) values.push(value);
+    }
+  }
+  return values;
+}
+
+function parseAliasEnum(
+  params: QueryLike,
+  names: readonly string[],
+  allowed: readonly string[],
+  defaultValue: string,
+  errorMessage: string,
+): ValidationResult<string> {
+  const values = aliasValues(params, names);
+  if (values.length === 0) return { ok: true, value: defaultValue };
+
+  const unique = [...new Set(values.map((value) => value.toLowerCase()))];
+  if (unique.length !== 1 || !allowed.includes(unique[0])) {
+    return { ok: false, error: errorMessage };
+  }
+  return { ok: true, value: unique[0] };
 }
 
 function parseInteger(
@@ -159,6 +233,48 @@ function parseCollection(
     return { ok: false, error: "That collection is not available for this content type." };
   }
   return { ok: true, value: raw as MobileCollection };
+}
+
+function parseGenres(params: QueryLike): { ids: number[]; withGenres: string } | null {
+  const values = aliasValues(params, ["genres", "with_genres", "genre"]);
+  if (values.length === 0) return { ids: [], withGenres: "" };
+
+  const usesComma = values.some((value) => value.includes(","));
+  const usesPipe = values.some((value) => value.includes("|"));
+  if (usesComma && usesPipe) return null;
+  const separator = usesPipe ? "|" : ",";
+  const ids: number[] = [];
+
+  for (const value of values) {
+    if (value.length > 200 || hasControlCharacters(value)) return null;
+    for (const part of value.split(/[,\|]/)) {
+      const trimmed = part.trim();
+      if (!/^\d{1,4}$/.test(trimmed)) return null;
+      const parsed = Number(trimmed);
+      if (parsed < 1 || parsed > MAX_GENRE_ID) return null;
+      ids.push(parsed);
+    }
+  }
+
+  const unique = [...new Set(ids)].sort((a, b) => a - b);
+  if (unique.length > MAX_GENRE_IDS) return null;
+  return { ids: unique, withGenres: unique.join(separator) };
+}
+
+function parseSortBy(params: QueryLike): MobileDiscoverSortBy | null {
+  const values = aliasValues(params, ["sortBy", "sort_by", "sort"]);
+  if (values.length === 0) return DEFAULT_SORT_BY as MobileDiscoverSortBy;
+  const unique = [...new Set(values)];
+  if (unique.length !== 1) return null;
+  if (!(VALID_SORT_BY as readonly string[]).includes(unique[0])) return null;
+  return unique[0] as MobileDiscoverSortBy;
+}
+
+function normalizeImdbId(raw: string): string | null {
+  const value = raw.trim();
+  if (/^tt\d{7,10}$/i.test(value)) return value.toLowerCase();
+  if (/^\d{7,10}$/.test(value)) return `tt${value}`;
+  return null;
 }
 
 export function parseHomeParams(params: QueryLike): ValidationResult<HomeParams> {
@@ -276,6 +392,105 @@ export function parseEpisodeGroupParams(params: QueryLike): ValidationResult<Epi
   return { ok: true, value: { groupId } };
 }
 
+export function parseDiscoverParams(params: QueryLike): ValidationResult<DiscoverParams> {
+  const paramsError = validateAllowedParams(params, DISCOVER_PARAM_NAMES, [
+    "genres",
+    "with_genres",
+    "genre",
+  ]);
+  if (paramsError) return { ok: false, error: paramsError };
+
+  const content = parseAliasEnum(
+    params,
+    ["content", "mediaType", "type"],
+    MEDIA_TYPES,
+    "movie",
+    INVALID_MEDIA_TYPE,
+  );
+  if (!content.ok) return content;
+
+  const page = parseInteger(one(params, "page"), {
+    defaultValue: 1,
+    min: 1,
+    max: MAX_PAGE,
+    errorMessage: INVALID_PAGE,
+  });
+  if (!page.ok) return page;
+
+  const genres = parseGenres(params);
+  if (!genres) return { ok: false, error: INVALID_GENRES };
+  const sortBy = parseSortBy(params);
+  if (!sortBy) return { ok: false, error: INVALID_SORT };
+
+  return {
+    ok: true,
+    value: {
+      content: content.value as MediaType,
+      genreIds: genres.ids,
+      withGenres: genres.withGenres,
+      sortBy,
+      page: page.value,
+    },
+  };
+}
+
+export function parseGenresParams(params: QueryLike): ValidationResult<GenresParams> {
+  const paramsError = validateAllowedParams(params, ["content", "mediaType", "type"]);
+  if (paramsError) return { ok: false, error: paramsError };
+
+  const content = parseAliasEnum(
+    params,
+    ["content", "mediaType", "type"],
+    MEDIA_TYPES,
+    "movie",
+    INVALID_MEDIA_TYPE,
+  );
+  if (!content.ok) return content;
+  return { ok: true, value: { content: content.value as MediaType } };
+}
+
+export function parseFindParams(
+  params: QueryLike,
+  pathImdbId?: string,
+): ValidationResult<FindParams> {
+  const paramsError = validateAllowedParams(params, FIND_PARAM_NAMES);
+  if (paramsError) return { ok: false, error: paramsError };
+
+  const rawIds = aliasValues(params, ["imdbId", "imdb_id", "externalId", "id"]);
+  if (pathImdbId !== undefined && pathImdbId !== null && pathImdbId.trim()) {
+    rawIds.push(pathImdbId.trim());
+  }
+  if (rawIds.length === 0) return { ok: false, error: INVALID_IMDB_ID };
+
+  const normalizedIds = rawIds.map(normalizeImdbId);
+  if (normalizedIds.some((id) => id === null)) return { ok: false, error: INVALID_IMDB_ID };
+  const uniqueIds = [...new Set(normalizedIds as string[])];
+  if (uniqueIds.length !== 1) return { ok: false, error: INVALID_IMDB_ID };
+
+  const sources = aliasValues(params, ["externalSource", "external_source"]);
+  if (sources.some((source) => source !== "imdb_id")) {
+    return { ok: false, error: "Only externalSource=imdb_id is supported." };
+  }
+
+  const mediaType = parseAliasEnum(
+    params,
+    ["content", "mediaType", "type"],
+    SEARCH_TYPES,
+    "multi",
+    "type must be multi, movie or tv.",
+  );
+  if (!mediaType.ok) return mediaType;
+
+  return {
+    ok: true,
+    value: {
+      imdbId: uniqueIds[0],
+      mediaType: mediaType.value as MobileSearchType,
+      externalSource: "imdb_id",
+    },
+  };
+}
+
 export function collectionRequest(
   content: MediaType,
   collection: MobileCollection,
@@ -314,6 +529,28 @@ export function buildEpisodeGroupEndpoint(groupId: string): string {
   return `${MOBILE_API_PREFIX}/episode-groups?${query.toString()}`;
 }
 
+export function buildDiscoverEndpoint(
+  content: MediaType,
+  withGenres: string,
+  sortBy: MobileDiscoverSortBy,
+  page: number,
+): string {
+  const query = new URLSearchParams({ content, sortBy, page: String(page) });
+  if (withGenres) query.set("genres", withGenres);
+  return `${MOBILE_API_PREFIX}/discover?${query.toString()}`;
+}
+
+export function buildGenresEndpoint(content: MediaType): string {
+  const query = new URLSearchParams({ content });
+  return `${MOBILE_API_PREFIX}/genres?${query.toString()}`;
+}
+
+export function buildFindEndpoint(imdbId: string, mediaType: MobileSearchType): string {
+  const query = new URLSearchParams({ imdbId });
+  if (mediaType !== "multi") query.set("mediaType", mediaType);
+  return `${MOBILE_API_PREFIX}/find?${query.toString()}`;
+}
+
 export const homeCacheKey = ({ content, page }: HomeParams): string =>
   `home:${content}:${page}`;
 export const listCacheKey = ({ content, collection, page }: ListParams): string =>
@@ -326,3 +563,13 @@ export const episodesCacheKey = ({ tvId, season }: EpisodesParams): string =>
   `episodes:${tvId}:${season}`;
 export const episodeGroupCacheKey = ({ groupId }: EpisodeGroupParams): string =>
   `episode-group:${groupId}`;
+export const discoverCacheKey = ({
+  content,
+  withGenres,
+  sortBy,
+  page,
+}: DiscoverParams): string =>
+  `discover:${content}:${withGenres || "all"}:${sortBy}:${page}`;
+export const genresCacheKey = ({ content }: GenresParams): string => `genres:${content}`;
+export const findCacheKey = ({ imdbId, mediaType }: FindParams): string =>
+  `find:${imdbId}:${mediaType}`;

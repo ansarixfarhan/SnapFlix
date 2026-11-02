@@ -2,8 +2,10 @@ import {
   BROWSER_MAX_AGE,
   EDGE_STALE_IF_ERROR,
   EDGE_STALE_WHILE_REVALIDATE,
+  MOBILE_API_KEY_HEADER,
   MOBILE_API_VERSION,
   MOBILE_CACHE_HEADER,
+  MOBILE_CDN_CACHE_HEADER,
   TMDB_IMAGE_BASE_URL,
 } from "./constants";
 import { isMobileApiKeyEnabled, isMobileRequestAuthorized } from "./auth";
@@ -28,7 +30,7 @@ type EdgeCache = {
 export type MobileEndpointOptions<P, T> = {
   parse: (params: URLSearchParams) => ValidationResult<P>;
   cacheKey: (params: P) => string;
-  ttlSeconds: number;
+  ttlSeconds: number | ((data: T) => number);
   rateLimitCost?: number;
   load: (params: P) => Promise<T>;
 };
@@ -39,6 +41,7 @@ const RATE_HEADERS_TO_STRIP = [
   "x-ratelimit-reset",
   "retry-after",
   MOBILE_CACHE_HEADER,
+  MOBILE_CDN_CACHE_HEADER,
   "set-cookie",
 ];
 
@@ -78,6 +81,10 @@ function getEdgeCache(): EdgeCache | null {
 }
 
 async function readEdgeCache(cacheKey: string): Promise<Response | null> {
+  // A CDN cache hit would bypass the Worker-side app-key check. When the gate
+  // is enabled, no shared/public cache is used at all.
+  if (isMobileApiKeyEnabled()) return null;
+
   const cache = getEdgeCache();
   if (!cache) return null;
   try {
@@ -91,6 +98,8 @@ async function readEdgeCache(cacheKey: string): Promise<Response | null> {
 }
 
 async function writeEdgeCache(cacheKey: string, response: Response): Promise<void> {
+  if (isMobileApiKeyEnabled()) return;
+
   const cache = getEdgeCache();
   if (!cache || response.status !== 200) return;
   try {
@@ -122,6 +131,7 @@ export function mobileSuccessResponse<T>(
   data: T,
   ttlSeconds: number,
   cacheStatus: "MISS" | "HIT" = "MISS",
+  publiclyCacheable = true,
 ): Response {
   const payload: MobileSuccess<T> = {
     ok: true,
@@ -134,11 +144,21 @@ export function mobileSuccessResponse<T>(
     },
   };
   const headers = baseHeaders();
-  headers.set("Cache-Control", cacheControl(ttlSeconds));
-  headers.set(
-    "CDN-Cache-Control",
-    `public, s-maxage=${ttlSeconds}, stale-while-revalidate=${EDGE_STALE_WHILE_REVALIDATE}, stale-if-error=${EDGE_STALE_IF_ERROR}`,
-  );
+
+  if (publiclyCacheable) {
+    headers.set("Cache-Control", cacheControl(ttlSeconds));
+    headers.set(
+      "CDN-Cache-Control",
+      `public, s-maxage=${ttlSeconds}, stale-while-revalidate=${EDGE_STALE_WHILE_REVALIDATE}, stale-if-error=${EDGE_STALE_IF_ERROR}`,
+    );
+    headers.set(MOBILE_CDN_CACHE_HEADER, "enabled");
+  } else {
+    headers.set("Cache-Control", "private, no-store, no-cache, max-age=0, must-revalidate");
+    headers.set("CDN-Cache-Control", "no-store");
+    headers.set("Vary", `Accept-Encoding, ${MOBILE_API_KEY_HEADER}`);
+    headers.set(MOBILE_CDN_CACHE_HEADER, "disabled");
+  }
+
   headers.set(MOBILE_CACHE_HEADER, cacheStatus);
   return new Response(JSON.stringify(payload), { status: 200, headers });
 }
@@ -160,6 +180,7 @@ export function mobileErrorResponse(error: MobileError): Response {
   headers.set("Cache-Control", "private, no-store, no-cache, max-age=0, must-revalidate");
   headers.set("CDN-Cache-Control", "no-store");
   headers.set(MOBILE_CACHE_HEADER, "BYPASS");
+  headers.set(MOBILE_CDN_CACHE_HEADER, "disabled");
   if (error.retryable && error.retryAfterSeconds) {
     headers.set("Retry-After", String(error.retryAfterSeconds));
   }
@@ -201,25 +222,31 @@ export async function runMobileEndpoint<P, T>(
       rate,
     );
   }
+  const endpointParams = parsed.value;
 
   if (!getMobileTmdbToken()) {
     return applyRateHeaders(mobileErrorResponse(serviceUnconfiguredError()), rate);
   }
 
-  const key = `mobile:${MOBILE_API_VERSION}:${options.cacheKey(parsed.value)}`;
+  const publiclyCacheable = !isMobileApiKeyEnabled();
+  const key = `mobile:${MOBILE_API_VERSION}:${options.cacheKey(endpointParams)}`;
   const edgeHit = await readEdgeCache(key);
   if (edgeHit) {
     edgeHit.headers.set(MOBILE_CACHE_HEADER, "HIT");
     return applyRateHeaders(edgeHit, rate);
   }
 
+  const ttlForData = (data: T): number =>
+    typeof options.ttlSeconds === "function" ? options.ttlSeconds(data) : options.ttlSeconds;
+
   try {
     const data = await mobileCache.run(
       key,
-      options.ttlSeconds * 1_000,
-      () => options.load(parsed.value),
+      (value: T) => ttlForData(value) * 1_000,
+      () => options.load(endpointParams),
     );
-    const response = mobileSuccessResponse(data, options.ttlSeconds, "MISS");
+    const ttlSeconds = ttlForData(data);
+    const response = mobileSuccessResponse(data, ttlSeconds, "MISS", publiclyCacheable);
     await writeEdgeCache(key, response);
     return applyRateHeaders(response, rate);
   } catch (error) {

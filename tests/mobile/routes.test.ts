@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
+import { GET as detailsGET } from "../../src/app/api/mobile/v1/details/route";
+import { GET as discoverGET } from "../../src/app/api/mobile/v1/discover/route";
 import { GET as episodeGroupGET } from "../../src/app/api/mobile/v1/episode-groups/route";
 import { GET as episodesGET } from "../../src/app/api/mobile/v1/episodes/route";
-import { GET as detailsGET } from "../../src/app/api/mobile/v1/details/route";
+import { GET as findGET } from "../../src/app/api/mobile/v1/find/route";
+import { GET as findPathGET } from "../../src/app/api/mobile/v1/find/[imdbId]/route";
+import { GET as genresGET } from "../../src/app/api/mobile/v1/genres/route";
 import { GET as homeGET } from "../../src/app/api/mobile/v1/home/route";
 import { GET as listGET } from "../../src/app/api/mobile/v1/list/route";
+import { GET as lookupGET } from "../../src/app/api/mobile/v1/lookup/route";
 import { GET as searchGET } from "../../src/app/api/mobile/v1/search/route";
 import { mobileCache } from "../../src/lib/mobile/cache";
 import { mobileRateLimiter } from "../../src/lib/mobile/rate-limit";
@@ -44,6 +49,10 @@ class FakeEdgeCache {
 
   clear(): void {
     this.store.clear();
+  }
+
+  get size(): number {
+    return this.store.size;
   }
 }
 
@@ -135,12 +144,15 @@ test("home returns hero and fixed rows with cacheable, cookie-free JSON", async 
   assert.equal(body.data.content, "tv");
   assert.equal(body.data.rows.length, 5);
   assert.equal(body.data.hero.length, 1);
+  assert.equal(body.data.partial, false);
+  assert.deepEqual(body.data.failedRows, []);
   assert.equal(body.data.rows[0].results[0].mediaType, "tv");
   assert.match(body.data.rows[0].endpoint, /\/api\/mobile\/v1\/list\?content=tv/);
   assert.equal("streams" in body.data, false);
   assert.equal(fetchCalls.length, 5);
   assert.match(response.headers.get("cache-control") ?? "", /s-maxage=600/);
   assert.match(response.headers.get("cdn-cache-control") ?? "", /s-maxage=600/);
+  assert.equal(response.headers.get("x-mobile-cdn-cache"), "enabled");
   assert.equal(response.headers.get("x-mobile-cache"), "MISS");
   assert.equal(response.headers.get("access-control-allow-origin"), null);
   assert.equal(response.headers.get("set-cookie"), null);
@@ -405,7 +417,7 @@ test("Cloudflare Cache API responses are reused when the in-isolate cache is col
   assert.equal(fetchCalls.length, 1);
 });
 
-test("optional app key is enforced before any TMDB request", async () => {
+test("optional app key is enforced and disables public CDN/Worker caching", async () => {
   const key = "local-app-secret-1234567890";
   process.env.MOBILE_API_KEY = key;
   installFetch(() =>
@@ -428,6 +440,16 @@ test("optional app key is enforced before any TMDB request", async () => {
     mobileRequest(path, { "x-snapflix-mobile-key": key }),
   );
   assert.equal(authorized.status, 200);
+  assert.match(authorized.headers.get("cache-control") ?? "", /private.*no-store/);
+  assert.equal(authorized.headers.get("cdn-cache-control"), "no-store");
+  assert.equal(authorized.headers.get("x-mobile-cdn-cache"), "disabled");
+  assert.doesNotMatch(authorized.headers.get("cache-control") ?? "", /s-maxage/);
+  assert.equal(edgeCache.size, 0);
+  assert.equal(fetchCalls.length, 1);
+
+  mobileRateLimiter.clear();
+  const unauthorizedAfterCache = await listGET(mobileRequest(path));
+  assert.equal(unauthorizedAfterCache.status, 401);
   assert.equal(fetchCalls.length, 1);
 });
 
@@ -450,4 +472,171 @@ test("upstream rate limits are surfaced without caching the error", async () => 
   assert.equal(response.headers.get("retry-after"), "9");
   assert.match(response.headers.get("cache-control") ?? "", /no-store/);
   assert.equal(response.headers.get("x-mobile-cache"), "BYPASS");
+});
+
+test("home returns partial rows when one TMDB row fails", async () => {
+  installFetch((url) => {
+    if (url.pathname === "/3/trending/tv/day") {
+      return new Response("{}", {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return jsonResponse({
+      page: 1,
+      total_pages: 1,
+      total_results: 1,
+      results: [
+        {
+          id: 301,
+          name: "Available Show",
+          backdrop_path: "/backdrop.jpg",
+          poster_path: "/poster.jpg",
+          first_air_date: "2024-01-01",
+        },
+      ],
+    });
+  });
+
+  const response = await homeGET(mobileRequest("/api/mobile/v1/home?content=tv&page=1"));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.data.rows.length, 4);
+  assert.equal(body.data.partial, true);
+  assert.equal(body.data.failedRows.length, 1);
+  assert.equal(body.data.failedRows[0].id, "trending_day");
+  assert.equal(body.data.failedRows[0].retryable, true);
+  assert.match(response.headers.get("cache-control") ?? "", /s-maxage=30/);
+  assert.equal(response.headers.get("x-mobile-cdn-cache"), "enabled");
+});
+
+test("genre Discover returns normalized and TMDB-compatible fields", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/discover/movie");
+    assert.equal(url.searchParams.get("with_genres"), "12,28");
+    assert.equal(url.searchParams.get("sort_by"), "vote_average.desc");
+    assert.equal(url.searchParams.get("include_adult"), "false");
+    assert.equal(url.searchParams.get("page"), "2");
+    assert.equal(url.searchParams.get("language"), "en-US");
+    return jsonResponse({
+      page: 2,
+      total_pages: 3,
+      total_results: 60,
+      results: [
+        {
+          id: 77,
+          title: "Action Drama",
+          poster_path: "/ad.jpg",
+          release_date: "2022-01-01",
+          vote_average: 7.8,
+          genre_ids: [12, 28],
+          media_type: "movie",
+        },
+      ],
+    });
+  });
+
+  const response = await discoverGET(
+    mobileRequest(
+      "/api/mobile/v1/discover?mediaType=movie&with_genres=28,12&sort_by=vote_average.desc&page=2",
+    ),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data.genres, [12, 28]);
+  assert.equal(body.data.with_genres, "12,28");
+  assert.equal(body.data.sortBy, "vote_average.desc");
+  assert.equal(body.data.sort_by, "vote_average.desc");
+  assert.equal(body.data.total_pages, 3);
+  assert.equal(body.data.totalResults, 60);
+  assert.equal(body.data.nextPage, 3);
+  assert.match(body.data.endpoint, /\/api\/mobile\/v1\/discover\?/);
+  assert.equal(body.data.results[0].mediaType, "movie");
+});
+
+test("genre list supports the mobile type alias", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/genre/tv/list");
+    return jsonResponse({
+      genres: [
+        { id: 18, name: "Drama" },
+        { id: 10765, name: "Sci-Fi & Fantasy" },
+      ],
+    });
+  });
+
+  const response = await genresGET(mobileRequest("/api/mobile/v1/genres?type=tv"));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.content, "tv");
+  assert.equal(body.data.media_type, "tv");
+  assert.equal(body.data.genres.length, 2);
+  assert.equal(body.data.tmdb.genres.length, 2);
+});
+
+test("IMDb lookup supports query, alias and path-style compatibility routes", async () => {
+  installFetch((url) => {
+    assert.match(url.pathname, /^\/3\/find\/tt\d+$/);
+    assert.equal(url.searchParams.get("external_source"), "imdb_id");
+    assert.equal(url.searchParams.get("language"), "en-US");
+    return jsonResponse({
+      movie_results: [
+        {
+          id: 101,
+          title: "Movie",
+          poster_path: "/m.jpg",
+          release_date: "2020-01-01",
+          vote_average: 7.5,
+          genre_ids: [18],
+          media_type: "movie",
+          original_language: "en",
+        },
+      ],
+      tv_results: [
+        {
+          id: 202,
+          name: "Show",
+          poster_path: "/s.jpg",
+          first_air_date: "2021-01-01",
+          media_type: "tv",
+        },
+      ],
+      tv_episode_results: [],
+      tv_season_results: [],
+      person_results: [{ id: 999, name: "Person", media_type: "person" }],
+    });
+  });
+
+  const response = await findGET(
+    mobileRequest("/api/mobile/v1/find?imdb_id=1234567&mediaType=movie"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.imdbId, "tt1234567");
+  assert.equal(body.data.external_source, "imdb_id");
+  assert.equal(body.data.requestedMediaType, "movie");
+  assert.equal(body.data.mediaType, "movie");
+  assert.equal(body.data.tmdbId, 101);
+  assert.equal(body.data.match.posterPath, "/m.jpg");
+  assert.equal(body.data.movie_results[0].poster_path, "/m.jpg");
+  assert.equal(body.data.results.length, 1);
+  assert.equal(body.data.tv_results.length, 1);
+  assert.equal(body.data.person_results.length, 0);
+
+  const lookupAlias = await lookupGET(
+    mobileRequest("/api/mobile/v1/lookup?imdbId=tt1234567"),
+  );
+  assert.equal(lookupAlias.status, 200);
+
+  const pathAlias = await findPathGET(
+    mobileRequest("/api/mobile/v1/find/tt7654321"),
+    { params: Promise.resolve({ imdbId: "tt7654321" }) },
+  );
+  assert.equal(pathAlias.status, 200);
+  assert.equal((await pathAlias.json()).data.imdbId, "tt7654321");
 });

@@ -5,7 +5,12 @@ type CacheEntry = { value: unknown; expiresAt: number };
 export type MobileCache = {
   get<T>(key: string, now?: number): T | undefined;
   set<T>(key: string, value: T, ttlMs: number, now?: number): void;
-  run<T>(key: string, ttlMs: number, load: () => Promise<T>, now?: number): Promise<T>;
+  run<T>(
+    key: string,
+    ttlMs: number | ((value: T) => number),
+    load: () => Promise<T>,
+    now?: number,
+  ): Promise<T>;
   clear(): void;
   readonly size: number;
 };
@@ -51,7 +56,7 @@ export function createMobileCache(maxEntries = 300): MobileCache {
 
     async run<T>(
       key: string,
-      ttlMs: number,
+      ttlMs: number | ((value: T) => number),
       load: () => Promise<T>,
       now = Date.now(),
     ): Promise<T> {
@@ -64,7 +69,8 @@ export function createMobileCache(maxEntries = 300): MobileCache {
       const task = Promise.resolve()
         .then(load)
         .then((value) => {
-          this.set(key, value, ttlMs);
+          const resolvedTtl = typeof ttlMs === "function" ? ttlMs(value) : ttlMs;
+          this.set(key, value, resolvedTtl);
           return value;
         })
         .finally(() => {

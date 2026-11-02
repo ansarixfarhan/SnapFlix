@@ -6,6 +6,8 @@
  * metadata objects; playback remains the app's existing responsibility.
  */
 
+import type { MobileDiscoverSortBy } from "./constants";
+
 export type MediaType = "movie" | "tv";
 export type MobileSearchType = MediaType | "multi";
 
@@ -112,12 +114,22 @@ export type MobileHomeRow = MobileListPage & {
   endpoint: string | null;
 };
 
+export type MobileHomeFailure = {
+  id: MobileCollection;
+  title: string;
+  code: MobileErrorCode;
+  message: string;
+  retryable: boolean;
+};
+
 export type MobileHomeResponse = {
   content: MediaType;
   page: number;
   featuredCollection: MobileCollection | null;
   hero: MobileCard[];
   rows: MobileHomeRow[];
+  partial: boolean;
+  failedRows: MobileHomeFailure[];
 };
 
 export type MobileListResponse = MobileListPage & {
@@ -133,6 +145,65 @@ export type MobileSearchResponse = MobileListPage & {
   type: MobileSearchType;
   nextPage: number | null;
   endpoint: string | null;
+};
+
+export type MobileGenreListResponse = {
+  content: MediaType;
+  mediaType: MediaType;
+  media_type: MediaType;
+  genres: MobileGenre[];
+  totalGenres: number;
+  tmdb: { genres: MobileGenre[] };
+};
+
+export type MobileDiscoverResponse = MobileListPage & {
+  content: MediaType;
+  mediaType: MediaType;
+  media_type: MediaType;
+  genres: number[];
+  genre_ids: number[];
+  with_genres: string;
+  sortBy: MobileDiscoverSortBy;
+  sort_by: MobileDiscoverSortBy;
+  total_pages: number;
+  total_results: number;
+  nextPage: number | null;
+  endpoint: string | null;
+};
+
+/**
+ * A find result carries both the normalized camelCase DTO and TMDB-style
+ * snake_case aliases, so older mobile clients can read either shape.
+ */
+export type MobileFindCard = MobileCard & {
+  media_type: MediaType;
+  name: string;
+  original_title: string;
+  original_name: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  release_date: string;
+  first_air_date: string;
+  vote_average: number;
+  vote_count: number;
+  genre_ids: number[];
+  original_language: string;
+};
+
+export type MobileFindResponse = {
+  imdbId: string;
+  externalSource: "imdb_id";
+  external_source: "imdb_id";
+  requestedMediaType: MobileSearchType;
+  mediaType: MediaType | null;
+  tmdbId: number | null;
+  match: MobileFindCard | null;
+  results: MobileFindCard[];
+  movie_results: MobileFindCard[];
+  tv_results: MobileFindCard[];
+  tv_episode_results: MobileFindCard[];
+  tv_season_results: MobileFindCard[];
+  person_results: MobileFindCard[];
 };
 
 export type MobileEpisode = {

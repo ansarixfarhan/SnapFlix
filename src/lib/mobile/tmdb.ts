@@ -14,6 +14,9 @@ const ALLOWED_QUERY_KEYS = new Set([
   "query",
   "include_adult",
   "append_to_response",
+  "with_genres",
+  "sort_by",
+  "external_source",
 ]);
 
 export type TmdbQueryParams = Record<string, string | number | boolean | null | undefined>;

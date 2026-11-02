@@ -80,6 +80,19 @@ function getEdgeCache(): EdgeCache | null {
   }
 }
 
+/**
+ * Cloudflare Cache API and fetch() responses can have immutable headers. A
+ * clone() preserves that guard, so rebuild the response before adding any
+ * per-request headers.
+ */
+function responseWithMutableHeaders(response: Response): Response {
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: new Headers(response.headers),
+  });
+}
+
 async function readEdgeCache(cacheKey: string): Promise<Response | null> {
   // A CDN cache hit would bypass the Worker-side app-key check. When the gate
   // is enabled, no shared/public cache is used at all.
@@ -91,7 +104,7 @@ async function readEdgeCache(cacheKey: string): Promise<Response | null> {
     const cached = await cache.match(new Request(canonicalCacheUrl(cacheKey)));
     if (!cached || !cached.ok) return null;
     if (!(cached.headers.get("content-type") ?? "").includes("application/json")) return null;
-    return cached.clone();
+    return responseWithMutableHeaders(cached);
   } catch {
     return null;
   }
@@ -118,13 +131,14 @@ async function writeEdgeCache(cacheKey: string, response: Response): Promise<voi
 }
 
 function applyRateHeaders(response: Response, rate: RateLimitResult): Response {
-  response.headers.set("X-RateLimit-Limit", String(rate.limit));
-  response.headers.set("X-RateLimit-Remaining", String(rate.remaining));
-  response.headers.set("X-RateLimit-Reset", String(rate.resetAtSeconds));
+  const mutable = responseWithMutableHeaders(response);
+  mutable.headers.set("X-RateLimit-Limit", String(rate.limit));
+  mutable.headers.set("X-RateLimit-Remaining", String(rate.remaining));
+  mutable.headers.set("X-RateLimit-Reset", String(rate.resetAtSeconds));
   if (!rate.allowed) {
-    response.headers.set("Retry-After", String(rate.retryAfterSeconds));
+    mutable.headers.set("Retry-After", String(rate.retryAfterSeconds));
   }
-  return response;
+  return mutable;
 }
 
 export function mobileSuccessResponse<T>(

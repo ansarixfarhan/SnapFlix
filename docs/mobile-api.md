@@ -382,6 +382,12 @@ For public/ungated deployments, three layers are used:
 3. Standard response headers: `Cache-Control` and `CDN-Cache-Control` with
    `s-maxage`, `stale-while-revalidate` and `stale-if-error`.
 
+Cloudflare Cache API responses can carry immutable headers. On a Worker cache
+HIT, the cached response is rebuilt with a fresh mutable `Headers` object before
+setting `X-Mobile-Cache` and per-request rate-limit headers. This preserves the
+cached JSON body and cache-control headers without risking an uncaught
+`TypeError`/`500`; a `clone()` alone would not make those headers mutable.
+
 Errors are always `no-store`.
 
 ### Optional app-key gate and CDN caching

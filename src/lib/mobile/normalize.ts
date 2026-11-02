@@ -3,8 +3,11 @@ import {
   CREW_LIMIT,
   IMAGE_LIMIT,
   KEYWORD_LIMIT,
+  MAX_CERTIFICATIONS,
+  MAX_COLLECTION_PARTS,
   MAX_FIND_RESULTS_PER_TYPE,
   MAX_PAGE,
+  MAX_REVIEWS,
   MAX_SEASON_NUMBER,
   MAX_TMDB_ID,
   RECOMMENDATION_LIMIT,
@@ -38,6 +41,10 @@ import type {
   MobileEpisodeGroupResponse,
   MobileEpisodeGroupSummary,
   MobileEpisodesResponse,
+  MobileCertification,
+  MobileCertificationInfo,
+  MobileCollectionResponse,
+  MobileCollectionSummary,
   MobileExternalIds,
   MobileFindCard,
   MobileFindResponse,
@@ -45,15 +52,22 @@ import type {
   MobileImage,
   MobileKeyword,
   MobileListPage,
+  MobileLogo,
+  MobileReview,
+  MobileTitleLogoResponse,
   MobileResolvedSeason,
   MobileSeason,
   MobileSpokenLanguage,
   MobileVideo,
 } from "./types";
 import {
+  buildCollectionEndpoint,
   buildEpisodeGroupEndpoint,
   buildEpisodesEndpoint,
+  buildTitleLogosEndpoint,
+  type CollectionParams,
   type FindParams,
+  type TitleLogoParams,
 } from "./validation";
 import {
   getSeasonGroupIdToSplit,
@@ -141,6 +155,164 @@ function normalizeImageArray(value: unknown): MobileImage[] {
       voteAverage: asRounded(raw.vote_average, 0, 0, 10),
       language: scalarText(raw.iso_639_1, 20),
     }));
+}
+
+function isSvgPath(path: string | null): boolean {
+  return Boolean(path && path.toLowerCase().endsWith(".svg"));
+}
+
+export function normalizeLogoArray(value: unknown): MobileLogo[] {
+  return normalizeImageArray(value).map((image) => ({
+    ...image,
+    isSvg: isSvgPath(image.path),
+  }));
+}
+
+export function selectTitleLogo(logos: MobileLogo[]): MobileLogo | null {
+  const withPaths = logos.filter((logo) => logo.path);
+  const pngLogos = withPaths.filter((logo) => !logo.isSvg);
+  return (
+    pngLogos.find((logo) => logo.language === "en") ||
+    pngLogos.find((logo) => !logo.language) ||
+    pngLogos[0] ||
+    withPaths[0] ||
+    null
+  );
+}
+
+function safeHttpsUrl(value: unknown, maxLength: number): string {
+  const text = scalarText(value, maxLength);
+  return /^https:\/\//i.test(text) ? text : "";
+}
+
+export function normalizeReviews(value: unknown): MobileReview[] {
+  const container = asRecord(value);
+  const items = Array.isArray(container.results)
+    ? container.results
+    : Array.isArray(value)
+      ? value
+      : [];
+
+  return asRecordArray(items)
+    .slice(0, MAX_REVIEWS)
+    .map((raw) => {
+      const authorDetails = asRecord(raw.author_details);
+      const rawRating = authorDetails.rating;
+      const rating =
+        typeof rawRating === "number" && Number.isFinite(rawRating)
+          ? asRounded(rawRating, 0, 0, 10)
+          : null;
+      return {
+        id: scalarText(raw.id, 100),
+        author: scalarText(raw.author, 200) || scalarText(authorDetails.name, 200),
+        authorUsername: scalarText(authorDetails.username, 100),
+        avatarPath: scalarText(authorDetails.avatar_path, 300),
+        rating,
+        content: scalarText(raw.content, 3_000),
+        createdAt: scalarText(raw.created_at, 40),
+        updatedAt: scalarText(raw.updated_at, 40),
+        url: safeHttpsUrl(raw.url, 300),
+      };
+    });
+}
+
+export function normalizeCertification(
+  raw: RawRecord,
+  mediaType: MediaType,
+): MobileCertificationInfo {
+  const entries: { country: string; certification: string }[] = [];
+
+  if (mediaType === "movie") {
+    const releaseDates = asRecord(raw.release_dates);
+    for (const country of asRecordArray(releaseDates.results)) {
+      const code = scalarText(country.iso_3166_1, 2).toUpperCase();
+      const dates = asRecordArray(country.release_dates);
+      const certification = dates
+        .map((item) => scalarText(item.certification, 30))
+        .find((value) => Boolean(value));
+      if (/^[A-Z]{2}$/.test(code) && certification) entries.push({ country: code, certification });
+    }
+  } else {
+    const contentRatings = asRecord(raw.content_ratings);
+    for (const country of asRecordArray(contentRatings.results)) {
+      const code = scalarText(country.iso_3166_1, 2).toUpperCase();
+      const certification = scalarText(country.rating, 30);
+      if (/^[A-Z]{2}$/.test(code) && certification) entries.push({ country: code, certification });
+    }
+  }
+
+  const seen = new Set<string>();
+  const deduped = entries.filter((entry) => {
+    const key = `${entry.country}:${entry.certification}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, MAX_CERTIFICATIONS);
+
+  const preferred =
+    ["IN", "US", "GB"].map((country) => deduped.find((entry) => entry.country === country)).find(Boolean) ||
+    deduped[0] ||
+    null;
+
+  const certifications: MobileCertification[] = deduped.map((entry) => ({
+    ...entry,
+    preferred: Boolean(preferred && entry.country === preferred.country),
+  }));
+
+  return {
+    certification: preferred?.certification ?? null,
+    certificationCountry: preferred?.country ?? null,
+    certifications,
+  };
+}
+
+export function normalizeCollectionSummary(raw: RawRecord): MobileCollectionSummary | null {
+  const collection = asRecord(raw.belongs_to_collection);
+  const id = positiveId(collection.id);
+  if (id === null) return null;
+  return {
+    id,
+    name: scalarText(collection.name, 200),
+    posterPath: safeImagePath(collection.poster_path),
+    backdropPath: safeImagePath(collection.backdrop_path),
+    endpoint: buildCollectionEndpoint(id),
+  };
+}
+
+export function normalizeTitleLogoResponse(
+  raw: RawRecord,
+  params: TitleLogoParams,
+): MobileTitleLogoResponse {
+  const logos = normalizeLogoArray(raw.logos);
+  const titleLogo = selectTitleLogo(logos);
+  const titleLogoPath = titleLogo?.path ?? null;
+  return {
+    mediaType: params.mediaType,
+    id: params.id,
+    endpoint: buildTitleLogosEndpoint(params.mediaType, params.id),
+    includeImageLanguage: "en,null",
+    logos,
+    titleLogo,
+    titleLogoPath,
+    title_logo_path: titleLogoPath,
+  };
+}
+
+export function normalizeCollectionResponse(
+  raw: RawRecord,
+  params: CollectionParams,
+): MobileCollectionResponse {
+  const parts = normalizeCards(raw.parts, "movie").slice(0, MAX_COLLECTION_PARTS);
+  return {
+    id: params.collectionId,
+    name: scalarText(raw.name, 200),
+    overview: scalarText(raw.overview, 2_000),
+    posterPath: safeImagePath(raw.poster_path),
+    backdropPath: safeImagePath(raw.backdrop_path),
+    endpoint: buildCollectionEndpoint(params.collectionId),
+    parts,
+    totalParts: parts.length,
+  };
 }
 
 function normalizeVideoArray(value: unknown): MobileVideo[] {
@@ -404,6 +576,11 @@ export function normalizeDetails(raw: RawRecord, mediaType: MediaType): MobileDe
   const similar = asRecord(raw.similar);
   const externalIds = normalizeExternalIds(raw);
   const title = scalarText(raw.title ?? raw.name ?? raw.original_title ?? raw.original_name, 300);
+  const logos = normalizeLogoArray(images.logos);
+  const titleLogo = selectTitleLogo(logos);
+  const reviews = normalizeReviews(raw.reviews);
+  const certificationInfo = normalizeCertification(raw, mediaType);
+  const collectionSummary = normalizeCollectionSummary(raw);
 
   const base: MobileDetails = {
     id,
@@ -433,11 +610,22 @@ export function normalizeDetails(raw: RawRecord, mediaType: MediaType): MobileDe
     images: {
       backdrops: normalizeImageArray(images.backdrops),
       posters: normalizeImageArray(images.posters),
+      logos,
     },
     keywords: normalizeKeywords(raw.keywords),
     recommendations: normalizeCards(recommendations.results, mediaType).slice(0, RECOMMENDATION_LIMIT),
     similar: normalizeCards(similar.results, mediaType).slice(0, RECOMMENDATION_LIMIT),
     externalIds,
+    titleLogo,
+    titleLogoPath: titleLogo?.path ?? null,
+    reviews,
+    reviewCount: reviews.length,
+    certification: certificationInfo.certification,
+    certificationCountry: certificationInfo.certificationCountry,
+    certifications: certificationInfo.certifications,
+    belongsToCollection: collectionSummary,
+    collection: collectionSummary,
+    belongs_to_collection: collectionSummary,
   };
 
   if (mediaType === "movie") {

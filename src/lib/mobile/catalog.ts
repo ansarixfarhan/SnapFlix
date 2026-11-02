@@ -4,23 +4,27 @@ import {
   MAX_PAGE,
   MOBILE_CACHE_TTL,
   MOVIE_APPEND_TO_RESPONSE,
+  TMDB_LOGO_LANGUAGES,
   TV_APPEND_TO_RESPONSE,
 } from "./constants";
 import { mobileCache } from "./cache";
 import { internalError, MobileError } from "./errors";
 import {
+  normalizeCollectionResponse,
   normalizeDetails,
   normalizeEpisodeGroup,
   normalizeEpisodes,
   normalizeFindResponse,
   normalizeGenres,
   normalizeListPage,
+  normalizeTitleLogoResponse,
 } from "./normalize";
 import { mobileTmdbGet, mobileTmdbGetList, type TmdbRawList } from "./tmdb";
 import type { RawRecord } from "./text";
 import type {
   MediaType,
   MobileCollection,
+  MobileCollectionResponse,
   MobileDetails,
   MobileDiscoverResponse,
   MobileEpisodeGroupResponse,
@@ -33,6 +37,7 @@ import type {
   MobileListPage,
   MobileListResponse,
   MobileSearchResponse,
+  MobileTitleLogoResponse,
 } from "./types";
 import {
   buildDiscoverEndpoint,
@@ -41,6 +46,7 @@ import {
   collectionRequest,
   collectionTitle,
   HOME_COLLECTIONS,
+  type CollectionParams,
   type DetailsParams,
   type DiscoverParams,
   type EpisodeGroupParams,
@@ -50,6 +56,7 @@ import {
   type HomeParams,
   type ListParams,
   type SearchParams,
+  type TitleLogoParams,
 } from "./validation";
 
 function nextPage(page: number, totalPages: number): number | null {
@@ -199,6 +206,10 @@ export async function getMobileDiscover(
       include_adult: false,
       sort_by: params.sortBy,
       with_genres: params.withGenres || undefined,
+      with_original_language: params.originalLanguage || undefined,
+      with_origin_country: params.originCountry || undefined,
+      with_keywords: params.keywords || undefined,
+      without_keywords: params.withoutKeywords || undefined,
     },
     MOBILE_CACHE_TTL.discover,
   );
@@ -209,24 +220,35 @@ export async function getMobileDiscover(
     content: params.content,
     mediaType: params.content,
     media_type: params.content,
+    preset: params.preset,
+    filter: params.preset,
     genres: params.genreIds,
     genre_ids: params.genreIds,
     with_genres: params.withGenres,
     sortBy: params.sortBy,
     sort_by: params.sortBy,
+    originalLanguage: params.originalLanguage,
+    with_original_language: params.originalLanguage,
+    originCountry: params.originCountry,
+    with_origin_country: params.originCountry,
+    keywords: params.keywords,
+    with_keywords: params.keywords,
+    withoutKeywords: params.withoutKeywords,
+    without_keywords: params.withoutKeywords,
+    filters: {
+      preset: params.preset,
+      genres: params.genreIds,
+      originalLanguage: params.originalLanguage,
+      originCountry: params.originCountry,
+      keywords: params.keywordIds,
+      withoutKeywords: params.withoutKeywordIds,
+    },
     ...list,
     total_pages: list.totalPages,
     total_results: list.totalResults,
     results: list.results.slice(0, HOME_ROW_LIMIT),
     nextPage: followingPage,
-    endpoint: followingPage
-      ? buildDiscoverEndpoint(
-          params.content,
-          params.withGenres,
-          params.sortBy,
-          followingPage,
-        )
-      : null,
+    endpoint: followingPage ? buildDiscoverEndpoint(params, followingPage) : null,
   };
 }
 
@@ -255,7 +277,10 @@ export async function getMobileDetails(params: DetailsParams): Promise<MobileDet
     params.mediaType === "movie" ? MOVIE_APPEND_TO_RESPONSE : TV_APPEND_TO_RESPONSE;
   const raw = await mobileTmdbGet<RawRecord>(
     `/${params.mediaType}/${params.id}`,
-    { append_to_response: append },
+    {
+      append_to_response: append,
+      include_image_language: TMDB_LOGO_LANGUAGES,
+    },
     MOBILE_CACHE_TTL.details,
   );
   return normalizeDetails(raw, params.mediaType);
@@ -288,4 +313,26 @@ export async function getMobileFind(params: FindParams): Promise<MobileFindRespo
     MOBILE_CACHE_TTL.find,
   );
   return normalizeFindResponse(raw, params);
+}
+
+export async function getMobileTitleLogos(
+  params: TitleLogoParams,
+): Promise<MobileTitleLogoResponse> {
+  const raw = await mobileTmdbGet<RawRecord>(
+    `/${params.mediaType}/${params.id}/images`,
+    { include_image_language: TMDB_LOGO_LANGUAGES },
+    MOBILE_CACHE_TTL.titleLogos,
+  );
+  return normalizeTitleLogoResponse(raw, params);
+}
+
+export async function getMobileCollection(
+  params: CollectionParams,
+): Promise<MobileCollectionResponse> {
+  const raw = await mobileTmdbGet<RawRecord>(
+    `/collection/${params.collectionId}`,
+    {},
+    MOBILE_CACHE_TTL.collection,
+  );
+  return normalizeCollectionResponse(raw, params);
 }

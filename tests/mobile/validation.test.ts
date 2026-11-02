@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCollectionEndpoint,
   buildDiscoverEndpoint,
   buildEpisodeGroupEndpoint,
   buildEpisodesEndpoint,
   buildListEndpoint,
+  buildTitleLogosEndpoint,
   collectionRequest,
+  parseCollectionParams,
   parseDetailsParams,
   parseDiscoverParams,
   parseEpisodeGroupParams,
@@ -16,6 +19,7 @@ import {
   parseHomeParams,
   parseListParams,
   parseSearchParams,
+  parseTitleLogoParams,
   type ValidationResult,
 } from "../../src/lib/mobile/validation";
 
@@ -107,19 +111,33 @@ test("genre Discover accepts compatibility aliases and canonicalizes fixed query
   );
   assert.deepEqual(value(parseDiscoverParams(params)), {
     content: "tv",
+    preset: "none",
     genreIds: [12, 28],
     withGenres: "12,28",
     sortBy: "vote_average.desc",
     page: 2,
+    originalLanguage: null,
+    originCountry: null,
+    keywordIds: [],
+    keywords: "",
+    withoutKeywordIds: [],
+    withoutKeywords: "",
   });
 
   const repeated = new URLSearchParams("content=movie&genres=28&genres=12&sort=popularity.asc");
   assert.deepEqual(value(parseDiscoverParams(repeated)), {
     content: "movie",
+    preset: "none",
     genreIds: [12, 28],
     withGenres: "12,28",
     sortBy: "popularity.asc",
     page: 1,
+    originalLanguage: null,
+    originCountry: null,
+    keywordIds: [],
+    keywords: "",
+    withoutKeywordIds: [],
+    withoutKeywords: "",
   });
 
   assert.equal(parseDiscoverParams(new URLSearchParams("content=movie&type=tv")).ok, false);
@@ -135,8 +153,13 @@ test("genre Discover accepts compatibility aliases and canonicalizes fixed query
     false,
   );
 
+  const discoverParams = value(
+    parseDiscoverParams(
+      new URLSearchParams("content=movie&genres=12,28&sortBy=vote_average.desc&page=3"),
+    ),
+  );
   assert.equal(
-    buildDiscoverEndpoint("movie", "12,28", "vote_average.desc", 3),
+    buildDiscoverEndpoint(discoverParams),
     "/api/mobile/v1/discover?content=movie&sortBy=vote_average.desc&page=3&genres=12%2C28",
   );
 });
@@ -166,4 +189,101 @@ test("genre list and IMDb lookup compatibility params are strictly validated", (
   assert.equal(parseFindParams(new URLSearchParams("imdbId=tt123")).ok, false);
   assert.equal(parseFindParams(new URLSearchParams("imdbId=tt1234567&externalSource=tvdb_id")).ok, false);
   assert.equal(parseFindParams(new URLSearchParams("imdbId=tt1234567&type=person")).ok, false);
+});
+
+test("anime/Korean Discover presets and explicit filters are strictly resolved", () => {
+  const anime = value(parseDiscoverParams(new URLSearchParams("type=anime&page=2")));
+  assert.deepEqual(
+    {
+      content: anime.content,
+      preset: anime.preset,
+      genreIds: anime.genreIds,
+      withGenres: anime.withGenres,
+      sortBy: anime.sortBy,
+      page: anime.page,
+      originalLanguage: anime.originalLanguage,
+      originCountry: anime.originCountry,
+      keywordIds: anime.keywordIds,
+      keywords: anime.keywords,
+      withoutKeywordIds: anime.withoutKeywordIds,
+      withoutKeywords: anime.withoutKeywords,
+    },
+    {
+      content: "tv",
+      preset: "anime",
+      genreIds: [16],
+      withGenres: "16",
+      sortBy: "popularity.desc",
+      page: 2,
+      originalLanguage: "ja",
+      originCountry: "JP",
+      keywordIds: [210024],
+      keywords: "210024",
+      withoutKeywordIds: [158718, 155477],
+      withoutKeywords: "158718|155477",
+    },
+  );
+
+  const korean = value(
+    parseDiscoverParams(new URLSearchParams("content=movie&preset=korean&genres=28")),
+  );
+  assert.equal(korean.content, "movie");
+  assert.equal(korean.preset, "korean");
+  assert.deepEqual(korean.genreIds, [28]);
+  assert.equal(korean.originalLanguage, "ko");
+  assert.equal(korean.originCountry, "KR");
+  assert.equal(korean.keywords, "");
+
+  const overridden = value(
+    parseDiscoverParams(
+      new URLSearchParams(
+        "filter=anime&content=tv&with_original_language=ko&with_origin_country=KR&with_keywords=1,2&without_keywords=3",
+      ),
+    ),
+  );
+  assert.equal(overridden.originalLanguage, "ko");
+  assert.equal(overridden.originCountry, "KR");
+  assert.equal(overridden.keywords, "1,2");
+  assert.equal(overridden.withoutKeywords, "3");
+  assert.match(buildDiscoverEndpoint(overridden), /filter=anime/);
+
+  assert.equal(parseDiscoverParams(new URLSearchParams("filter=anime&preset=korean")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("with_original_language=xx")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("with_origin_country=ZZ")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("with_keywords=abc")).ok, false);
+  assert.equal(
+    parseDiscoverParams(new URLSearchParams("filter=kdrama&content=movie&mediaType=tv")).ok,
+    false,
+  );
+});
+
+test("title logo and collection params accept compatibility aliases", () => {
+  assert.deepEqual(value(parseTitleLogoParams(new URLSearchParams("mediaType=movie&id=7"))), {
+    mediaType: "movie",
+    id: 7,
+  });
+  assert.deepEqual(value(parseTitleLogoParams(new URLSearchParams("type=tv&id=8"))), {
+    mediaType: "tv",
+    id: 8,
+  });
+  assert.equal(parseTitleLogoParams(new URLSearchParams("id=7")).ok, false);
+  assert.equal(parseTitleLogoParams(new URLSearchParams("mediaType=movie")).ok, false);
+
+  assert.deepEqual(value(parseCollectionParams(new URLSearchParams("collectionId=9"))), {
+    collectionId: 9,
+  });
+  assert.deepEqual(value(parseCollectionParams(new URLSearchParams("id=9"))), {
+    collectionId: 9,
+  });
+  assert.equal(parseCollectionParams(new URLSearchParams("collectionId=1&id=1")).ok, false);
+  assert.equal(parseCollectionParams(new URLSearchParams("collectionId=abc")).ok, false);
+
+  assert.equal(
+    buildTitleLogosEndpoint("movie", 7),
+    "/api/mobile/v1/title-logos?mediaType=movie&id=7",
+  );
+  assert.equal(
+    buildCollectionEndpoint(9),
+    "/api/mobile/v1/collection?collectionId=9",
+  );
 });

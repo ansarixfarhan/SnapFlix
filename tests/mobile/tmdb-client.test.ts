@@ -256,3 +256,36 @@ test("an oversized declared content-length is rejected before streaming", async 
       error.retryable === false,
   );
 });
+
+test("Story and Discover query keys are allowlisted and passed upstream safely", async () => {
+  const capturedUrls: URL[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrls.push(new URL(String(input)));
+    return jsonResponse({ page: 1, results: [] });
+  }) as typeof fetch;
+
+  await mobileTmdbGet(
+    "/discover/tv",
+    {
+      page: 1,
+      include_adult: false,
+      with_genres: "16",
+      with_original_language: "ja",
+      with_origin_country: "JP",
+      with_keywords: "210024",
+      without_keywords: "158718|155477",
+      sort_by: "first_air_date.desc",
+    },
+    600,
+  );
+  await mobileTmdbGet("/movie/77/images", { include_image_language: "en,null" }, 600);
+
+  assert.equal(capturedUrls.length, 2);
+  assert.equal(capturedUrls[0].searchParams.get("with_original_language"), "ja");
+  assert.equal(capturedUrls[0].searchParams.get("with_origin_country"), "JP");
+  assert.equal(capturedUrls[0].searchParams.get("with_keywords"), "210024");
+  assert.equal(capturedUrls[0].searchParams.get("without_keywords"), "158718|155477");
+  assert.equal(capturedUrls[0].searchParams.get("sort_by"), "first_air_date.desc");
+  assert.equal(capturedUrls[1].pathname, "/3/movie/77/images");
+  assert.equal(capturedUrls[1].searchParams.get("include_image_language"), "en,null");
+});

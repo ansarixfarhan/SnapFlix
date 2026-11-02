@@ -17,6 +17,11 @@ const ALLOWED_QUERY_KEYS = new Set([
   "with_genres",
   "sort_by",
   "external_source",
+  "include_image_language",
+  "with_original_language",
+  "with_origin_country",
+  "with_keywords",
+  "without_keywords",
 ]);
 
 export type TmdbQueryParams = Record<string, string | number | boolean | null | undefined>;

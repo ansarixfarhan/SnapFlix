@@ -1129,11 +1129,20 @@ export default function NativeWebPlayer({
       }
 
       v.style.setProperty('--snapflix-cue-offset', `-${liftPx}px`);
+      if (containerRef.current) {
+        containerRef.current.style.setProperty('--snapflix-cue-offset', `-${liftPx}px`);
+      }
+      if (typeof document !== 'undefined' && document.documentElement) {
+        document.documentElement.style.setProperty('--snapflix-cue-offset', `-${liftPx}px`);
+      }
     };
 
     updateSubtitleOffset();
 
     video.addEventListener('loadedmetadata', updateSubtitleOffset);
+    video.addEventListener('loadeddata', updateSubtitleOffset);
+    video.addEventListener('canplay', updateSubtitleOffset);
+    video.addEventListener('playing', updateSubtitleOffset);
     window.addEventListener('resize', updateSubtitleOffset);
 
     let ro: ResizeObserver | null = null;
@@ -1149,6 +1158,9 @@ export default function NativeWebPlayer({
       clearTimeout(t1);
       clearTimeout(t2);
       video.removeEventListener('loadedmetadata', updateSubtitleOffset);
+      video.removeEventListener('loadeddata', updateSubtitleOffset);
+      video.removeEventListener('canplay', updateSubtitleOffset);
+      video.removeEventListener('playing', updateSubtitleOffset);
       window.removeEventListener('resize', updateSubtitleOffset);
       if (ro) ro.disconnect();
     };
@@ -1171,11 +1183,76 @@ export default function NativeWebPlayer({
   const [isSearchingSubs, setIsSearchingSubs] = useState<boolean>(false);
 
   // Subtitle Appearance Customization
+  const [autoSubtitles, setAutoSubtitles] = useState<Array<{ id: string; title: string; language: string; uri: string }>>([]);
+
+  // Subtitle Appearance Customization
   const [subFontSize, setSubFontSize] = useState<'small' | 'medium' | 'large'>('medium');
   const [subColor, setSubColor] = useState<'white' | 'yellow'>('white');
-  const [subBg, setSubBg] = useState<'dark' | 'transparent'>('dark');
+  const [subBg, setSubBg] = useState<'dark' | 'transparent'>('transparent');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-fetch OpenSubtitles in background for media so all servers (including Vidy) have rich subtitles
+  useEffect(() => {
+    if (!title) return;
+    let isCancelled = false;
+
+    const fetchAutoSubs = async () => {
+      try {
+        const q = type === 'tv' && season && episode ? `${title} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}` : title;
+        const params = new URLSearchParams({ query: q });
+        if (type === 'tv') {
+          if (season) params.append('season', String(season));
+          if (episode) params.append('episode', String(episode));
+        }
+
+        const res = await fetch(`/api/subtitles/search?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isCancelled || !data.success || !Array.isArray(data.results)) return;
+
+        const seenLangs = new Set<string>();
+        const mapped: Array<{ id: string; title: string; language: string; uri: string }> = [];
+
+        // Sort: English and Hindi first, then others by download count
+        const sorted = [...data.results].sort((a, b) => {
+          const aL = (a.language || '').toLowerCase();
+          const bL = (b.language || '').toLowerCase();
+          if (aL === 'english') return -1;
+          if (bL === 'english') return 1;
+          if (aL === 'hindi') return -1;
+          if (bL === 'hindi') return 1;
+          return (b.downloadsCount || 0) - (a.downloadsCount || 0);
+        });
+
+        for (const item of sorted) {
+          const lang = (item.language || 'English').trim();
+          const langKey = lang.toLowerCase();
+          if (!seenLangs.has(langKey) && item.downloadUrl) {
+            seenLangs.add(langKey);
+            mapped.push({
+              id: `auto-${item.id || item.downloadUrl}`,
+              title: lang,
+              language: lang,
+              uri: item.downloadUrl,
+            });
+          }
+          if (mapped.length >= 14) break;
+        }
+
+        if (!isCancelled && mapped.length > 0) {
+          setAutoSubtitles(mapped);
+        }
+      } catch (e) {
+        console.warn('[Player] Subtitle auto-fetch warning:', e);
+      }
+    };
+
+    fetchAutoSubs();
+    return () => {
+      isCancelled = true;
+    };
+  }, [title, type, season, episode]);
 
   // Quality & Multi-Bitrate States
   const [selectedQuality, setSelectedQuality] = useState<string>('auto');
@@ -1552,6 +1629,20 @@ export default function NativeWebPlayer({
     setSelectedQuality('auto');
     setPlaybackError(null);
 
+    // If transitioning to Vidy (which has no internal HLS tracks), transition active subtitle to equivalent external track
+    if (targetProvider === 'vidy' && activeSubtitleIdRef.current && activeSubtitleIdRef.current.startsWith('hls-')) {
+      const prevSub = availableSubtitles.find(s => s.id === activeSubtitleIdRef.current);
+      const prevLang = (prevSub?.language || prevSub?.title || 'english').toLowerCase();
+      const altSub = availableSubtitles.find(s => s.uri && (
+        (s.language && s.language.toLowerCase().includes(prevLang)) ||
+        (s.title && s.title.toLowerCase().includes(prevLang))
+      )) || availableSubtitles.find(s => s.uri);
+
+      if (altSub) {
+        setTimeout(() => handleSelectSubtitle(altSub.id), 250);
+      }
+    }
+
     setSelectedStream({
       ...stream,
       providerName: stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : 'Vidy VPS'),
@@ -1726,19 +1817,22 @@ export default function NativeWebPlayer({
     }
   };
 
-  // Aggregated Subtitles across active provider stream + all provider streams + HLS tracks + uploaded tracks
+  // Aggregated Subtitles across active provider stream + all provider streams + HLS tracks + auto OpenSubtitles + uploaded tracks
   const availableSubtitles = useMemo(() => {
     const list: Array<{ id: string; title: string; language?: string; uri?: string; hlsIndex?: number; headers?: Record<string, string> }> = [];
     const seenUris = new Set<string>();
+    const seenTitles = new Set<string>();
 
     // 1. From active provider's stream
     if (selectedStream?.subtitles && Array.isArray(selectedStream.subtitles)) {
       selectedStream.subtitles.forEach((s, idx) => {
         const u = s.uri;
         if (u) seenUris.add(u);
+        const name = s.title || s.language || `Subtitle ${idx + 1}`;
+        seenTitles.add(name.toLowerCase());
         list.push({
           id: `provider-${idx}-${u || s.language}`,
-          title: s.title || s.language || `Subtitle ${idx + 1}`,
+          title: name,
           language: s.language,
           uri: u,
           headers: selectedStream.headers,
@@ -1746,16 +1840,19 @@ export default function NativeWebPlayer({
       });
     }
 
-    // 2. From all other streams in providerResults (e.g. Vidy subtitles when Vidly is active)
-    providerResults.forEach((prov) => {
+    // 2. From all other streams across providerResults, vidlyResults, and vidyResults
+    const allProviders = [...providerResults, ...vidlyResults, ...vidyResults];
+    allProviders.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (s.subtitles && Array.isArray(s.subtitles)) {
           s.subtitles.forEach((sub, idx) => {
             if (sub.uri && !seenUris.has(sub.uri)) {
               seenUris.add(sub.uri);
+              const name = sub.title || sub.language || `Subtitle ${list.length + 1}`;
+              seenTitles.add(name.toLowerCase());
               list.push({
                 id: `prov-${prov.providerName}-${idx}-${sub.uri}`,
-                title: sub.title || sub.language || `Subtitle ${list.length + 1}`,
+                title: name,
                 language: sub.language,
                 uri: sub.uri,
                 headers: s.headers,
@@ -1770,6 +1867,7 @@ export default function NativeWebPlayer({
     hlsSubtitles.forEach((track, idx) => {
       const name = track.name || track.lang || `Track ${idx + 1}`;
       if (!list.some(s => s.title.toLowerCase() === name.toLowerCase())) {
+        seenTitles.add(name.toLowerCase());
         list.push({
           id: `hls-${idx}`,
           title: name,
@@ -1779,11 +1877,20 @@ export default function NativeWebPlayer({
       }
     });
 
-    // 4. User uploaded / searched subtitles
+    // 4. Auto-fetched OpenSubtitles (available for all servers, including Vidy VPS!)
+    autoSubtitles.forEach((sub) => {
+      if (!seenTitles.has(sub.title.toLowerCase()) && !seenUris.has(sub.uri)) {
+        seenUris.add(sub.uri);
+        seenTitles.add(sub.title.toLowerCase());
+        list.push(sub);
+      }
+    });
+
+    // 5. User uploaded / searched subtitles
     uploadedSubtitles.forEach(s => list.push(s));
 
     return list;
-  }, [selectedStream, providerResults, hlsSubtitles, uploadedSubtitles]);
+  }, [selectedStream, providerResults, vidlyResults, vidyResults, hlsSubtitles, autoSubtitles, uploadedSubtitles]);
 
   // Handle Subtitle Selection
   const handleSelectSubtitle = (subId: string) => {
@@ -1870,6 +1977,33 @@ export default function NativeWebPlayer({
     }
   };
 
+  // Ensure dynamically loaded textTracks are actively set to 'showing' in Chromium/WebKit
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !activeSubtitleUri || activeSubtitleIdRef.current === 'off') return;
+
+    const enforceMode = () => {
+      if (!v.textTracks) return;
+      for (let i = 0; i < v.textTracks.length; i++) {
+        const t = v.textTracks[i];
+        if (t.kind === 'subtitles') {
+          t.mode = 'showing';
+        }
+      }
+    };
+
+    enforceMode();
+    const t1 = setTimeout(enforceMode, 60);
+    const t2 = setTimeout(enforceMode, 250);
+    const t3 = setTimeout(enforceMode, 700);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [activeSubtitleUri, activeSubtitleId]);
+
   // Upload Subtitle File (.srt or .vtt)
   const handleUploadSubtitle = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1890,7 +2024,7 @@ export default function NativeWebPlayer({
       content = content.replace(
         /((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})([^\r\n]*)/g,
         (_match, timing, settings) => {
-          const cleanSettings = (settings || '').replace(/\bline:\S+/g, '').trim();
+          const cleanSettings = (settings || '').replace(/\bline:\S+/g, '').replace(/\bposition:\S+/g, '').replace(/\balign:\S+/g, '').replace(/\bsize:\S+/g, '').trim();
           return `${timing}${cleanSettings ? ' ' + cleanSettings : ''}`.trim();
         }
       );
@@ -4514,11 +4648,14 @@ export default function NativeWebPlayer({
       <style jsx global>{`
         video::cue,
         ::cue {
-          font-size: ${subFontSize === 'small' ? '14px' : subFontSize === 'large' ? '22px' : '18px'} !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+          font-weight: 600 !important;
+          font-size: ${subFontSize === 'small' ? '15px' : subFontSize === 'large' ? '22px' : '18px'} !important;
           color: ${subColor === 'yellow' ? '#fde047' : '#ffffff'} !important;
           background-color: ${subBg === 'transparent' ? 'transparent' : 'rgba(0, 0, 0, 0.75)'} !important;
-          text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9) !important;
-          line-height: 1.4 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 2px 6px rgba(0, 0, 0, 0.85) !important;
+          line-height: 1.35 !important;
+          letter-spacing: 0.02em !important;
         }
 
         /* Position subtitles comfortably below movie frame into black letterbox bar */

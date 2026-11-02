@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
     text = text.replace(
       /((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})([^\r\n]*)/g,
       (_match, timing, settings) => {
-        const cleanSettings = (settings || '').replace(/\bline:\S+/g, '').trim();
+        const cleanSettings = (settings || '').replace(/\bline:\S+/g, '').replace(/\bposition:\S+/g, '').replace(/\balign:\S+/g, '').replace(/\bsize:\S+/g, '').trim();
         return `${timing}${cleanSettings ? ' ' + cleanSettings : ''}`.trim();
       }
     );

@@ -12,6 +12,10 @@
     "deploy": "wrangler deploy",
     "start": "next start --hostname 0.0.0.0",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "typecheck:mobile": "tsc --noEmit -p tsconfig.mobile.json",
+    "test": "npm run test:mobile-api",
+    "test:mobile-api": "node --import tsx --test tests/mobile/*.test.ts",
     "sb-start": "supabase start --debug --ignore-health-check",
     "sb-stop": "supabase stop --debug --all",
     "sb-restart": "supabase stop --debug --all && supabase start --debug --ignore-health-check",
@@ -65,6 +69,7 @@
     "prettier": "^3.6.2",
     "prettier-plugin-tailwindcss": "^0.6.14",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "webpack": "^5.101.2",
     "wrangler": "^4.156.0"

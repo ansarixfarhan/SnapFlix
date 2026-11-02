@@ -287,3 +287,31 @@ test("title logo and collection params accept compatibility aliases", () => {
     "/api/mobile/v1/collection?collectionId=9",
   );
 });
+
+test("Discover accepts five-digit TMDB TV genre IDs", () => {
+  const comma = value(
+    parseDiscoverParams(new URLSearchParams("content=tv&genres=10759,10765,10751")),
+  );
+  assert.equal(comma.content, "tv");
+  assert.deepEqual(comma.genreIds, [10751, 10759, 10765]);
+  assert.equal(comma.withGenres, "10751,10759,10765");
+
+  const piped = value(
+    parseDiscoverParams(
+      new URLSearchParams("content=tv&with_genres=10759|10765|10751"),
+    ),
+  );
+  assert.deepEqual(piped.genreIds, [10751, 10759, 10765]);
+  assert.equal(piped.withGenres, "10751|10759|10765");
+
+  const mixed = value(
+    parseDiscoverParams(new URLSearchParams("content=movie&genre=10751&genres=10402")),
+  );
+  assert.deepEqual(mixed.genreIds, [10402, 10751]);
+  assert.equal(mixed.withGenres, "10402,10751");
+
+  assert.equal(parseDiscoverParams(new URLSearchParams("genres=1000000")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("genres=10759,abc")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("genres=0")).ok, false);
+  assert.equal(parseDiscoverParams(new URLSearchParams("genres=10759&genres=1000000")).ok, false);
+});

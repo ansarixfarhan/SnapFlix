@@ -12,12 +12,15 @@ export const MAX_GROUP_ID_LENGTH = 64;
 export const MAX_UPSTREAM_BODY_BYTES = 4_000_000;
 export const UPSTREAM_TIMEOUT_MS = 8_000;
 export const MAX_GENRE_IDS = 10;
-export const MAX_GENRE_ID = 9_999;
+// TMDB uses five-digit TV/family genre ids such as 10759, 10765 and 10751.
+export const MAX_GENRE_ID = 999_999;
 export const MAX_KEYWORD_IDS = 10;
 export const MAX_KEYWORD_ID = 9_999_999;
 export const MAX_COUNTRY_CODES = 5;
 export const MAX_FIND_RESULTS_PER_TYPE = 20;
 export const MAX_REVIEWS = 5;
+export const MAX_CREATORS = 20;
+export const MAX_PRODUCTION_COUNTRIES = 20;
 export const MAX_CERTIFICATIONS = 30;
 export const MAX_COLLECTION_PARTS = 50;
 

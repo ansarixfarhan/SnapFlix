@@ -283,7 +283,7 @@ function parseGenres(params: QueryLike): { ids: number[]; withGenres: string } |
     if (value.length > 200 || hasControlCharacters(value)) return null;
     for (const part of value.split(/[,\|]/)) {
       const trimmed = part.trim();
-      if (!/^\d{1,4}$/.test(trimmed)) return null;
+      if (!/^\d{1,6}$/.test(trimmed)) return null;
       const parsed = Number(trimmed);
       if (parsed < 1 || parsed > MAX_GENRE_ID) return null;
       ids.push(parsed);

@@ -73,6 +73,18 @@ export type MobileCrewMember = {
   popularity: number;
 };
 
+export type MobileCreator = {
+  id: number;
+  name: string;
+  profilePath: string | null;
+  creditId: string;
+};
+
+export type MobileProductionCountry = {
+  code: string;
+  name: string;
+};
+
 export type MobileKeyword = { id: number; name: string };
 export type MobileGenre = { id: number; name: string };
 export type MobileCompany = { id: number; name: string; logoPath: string | null; country: string };
@@ -347,6 +359,10 @@ export type MobileDetails = {
   popularity: number;
   genres: MobileGenre[];
   productionCompanies: MobileCompany[];
+  productionCountries: MobileProductionCountry[];
+  production_countries: MobileProductionCountry[];
+  creators: MobileCreator[];
+  created_by: MobileCreator[];
   spokenLanguages: MobileSpokenLanguage[];
   credits: MobileCredits;
   videos: MobileVideo[];
@@ -379,6 +395,8 @@ export type MobileDetails = {
     episodeRunTime: number[];
     inProduction: boolean;
     networks: MobileCompany[];
+    creators: MobileCreator[];
+    productionCountries: MobileProductionCountry[];
     seasons: MobileSeason[];
     episodeGroups: MobileEpisodeGroupSummary[];
     recommendedEpisodeGroupId: string | null;

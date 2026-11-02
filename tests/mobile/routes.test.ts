@@ -869,3 +869,97 @@ test("Korean Discover preset keeps explicit movie content and genre filters", as
   assert.deepEqual(body.data.filters.genres, [28]);
   assert.equal(body.data.results[0].mediaType, "movie");
 });
+
+test("Discover forwards five-digit TMDB genre IDs upstream", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/discover/tv");
+    assert.equal(url.searchParams.get("with_genres"), "10751,10759,10765");
+    assert.equal(url.searchParams.get("include_adult"), "false");
+    return jsonResponse({
+      page: 1,
+      total_pages: 1,
+      total_results: 1,
+      results: [{ id: 101, name: "Genre Show", first_air_date: "2024-01-01" }],
+    });
+  });
+
+  const response = await discoverGET(
+    mobileRequest("/api/mobile/v1/discover?content=tv&genres=10759,10765,10751"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data.genres, [10751, 10759, 10765]);
+  assert.deepEqual(body.data.genre_ids, [10751, 10759, 10765]);
+  assert.equal(body.data.with_genres, "10751,10759,10765");
+  assert.deepEqual(body.data.filters.genres, [10751, 10759, 10765]);
+});
+
+test("TV details expose creators and production countries in Story fields", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/tv/888");
+    return jsonResponse({
+      id: 888,
+      name: "Creator Show",
+      original_name: "Creator Show",
+      overview: "A series with creators and countries.",
+      first_air_date: "2021-01-01",
+      poster_path: "/poster.jpg",
+      backdrop_path: "/backdrop.jpg",
+      vote_average: 8.4,
+      genres: [{ id: 18, name: "Drama" }],
+      credits: { cast: [], crew: [] },
+      videos: { results: [] },
+      images: { backdrops: [], posters: [], logos: [] },
+      keywords: { results: [] },
+      recommendations: { results: [] },
+      similar: { results: [] },
+      external_ids: { imdb_id: "tt888" },
+      seasons: [],
+      episode_groups: { results: [] },
+      reviews: { results: [] },
+      content_ratings: { results: [] },
+      created_by: [
+        {
+          id: 501,
+          name: "Show Creator",
+          profile_path: "/creator.jpg",
+          credit_id: "creator-credit-1",
+        },
+        {
+          id: 502,
+          name: "Second Creator",
+          profile_path: null,
+          credit_id: "creator-credit-2",
+        },
+      ],
+      production_countries: [
+        { iso_3166_1: "KR", name: "South Korea" },
+        { iso_3166_1: "US", name: "United States of America" },
+      ],
+    });
+  });
+
+  const response = await detailsGET(
+    mobileRequest("/api/mobile/v1/details?mediaType=tv&id=888"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.tv.creators.length, 2);
+  assert.deepEqual(body.data.tv.creators[0], {
+    id: 501,
+    name: "Show Creator",
+    profilePath: "/creator.jpg",
+    creditId: "creator-credit-1",
+  });
+  assert.equal(body.data.tv.creators[1].profilePath, null);
+  assert.deepEqual(body.data.tv.productionCountries, [
+    { code: "KR", name: "South Korea" },
+    { code: "US", name: "United States of America" },
+  ]);
+  assert.deepEqual(body.data.creators, body.data.tv.creators);
+  assert.deepEqual(body.data.created_by, body.data.tv.creators);
+  assert.deepEqual(body.data.productionCountries, body.data.tv.productionCountries);
+  assert.deepEqual(body.data.production_countries, body.data.tv.productionCountries);
+});

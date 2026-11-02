@@ -5,8 +5,10 @@ import {
   KEYWORD_LIMIT,
   MAX_CERTIFICATIONS,
   MAX_COLLECTION_PARTS,
+  MAX_CREATORS,
   MAX_FIND_RESULTS_PER_TYPE,
   MAX_PAGE,
+  MAX_PRODUCTION_COUNTRIES,
   MAX_REVIEWS,
   MAX_SEASON_NUMBER,
   MAX_TMDB_ID,
@@ -35,6 +37,7 @@ import type {
   MobileCard,
   MobileCastMember,
   MobileCompany,
+  MobileCreator,
   MobileCrewMember,
   MobileDetails,
   MobileEpisode,
@@ -53,6 +56,7 @@ import type {
   MobileKeyword,
   MobileListPage,
   MobileLogo,
+  MobileProductionCountry,
   MobileReview,
   MobileTitleLogoResponse,
   MobileResolvedSeason,
@@ -375,6 +379,26 @@ function normalizeCompanies(value: unknown): MobileCompany[] {
     }));
 }
 
+function normalizeCreators(value: unknown): MobileCreator[] {
+  return asRecordArray(value)
+    .slice(0, MAX_CREATORS)
+    .map((raw) => ({
+      id: asInteger(raw.id, 0, 0, MAX_TMDB_ID),
+      name: scalarText(raw.name, 200),
+      profilePath: safeImagePath(raw.profile_path),
+      creditId: scalarText(raw.credit_id, 100),
+    }));
+}
+
+function normalizeProductionCountries(value: unknown): MobileProductionCountry[] {
+  return asRecordArray(value)
+    .slice(0, MAX_PRODUCTION_COUNTRIES)
+    .map((raw) => ({
+      code: scalarText(raw.iso_3166_1, 2).toUpperCase(),
+      name: scalarText(raw.name, 100),
+    }));
+}
+
 function normalizeSpokenLanguages(value: unknown): MobileSpokenLanguage[] {
   return asRecordArray(value)
     .slice(0, 20)
@@ -581,6 +605,8 @@ export function normalizeDetails(raw: RawRecord, mediaType: MediaType): MobileDe
   const reviews = normalizeReviews(raw.reviews);
   const certificationInfo = normalizeCertification(raw, mediaType);
   const collectionSummary = normalizeCollectionSummary(raw);
+  const creators = normalizeCreators(raw.created_by);
+  const productionCountries = normalizeProductionCountries(raw.production_countries);
 
   const base: MobileDetails = {
     id,
@@ -601,6 +627,10 @@ export function normalizeDetails(raw: RawRecord, mediaType: MediaType): MobileDe
     popularity: asRounded(raw.popularity, 0, 0, 1_000_000_000_000),
     genres: normalizeGenres(raw.genres),
     productionCompanies: normalizeCompanies(raw.production_companies),
+    productionCountries,
+    production_countries: productionCountries,
+    creators,
+    created_by: creators,
     spokenLanguages: normalizeSpokenLanguages(raw.spoken_languages),
     credits: {
       cast: normalizeCast(credits.cast),
@@ -656,6 +686,8 @@ export function normalizeDetails(raw: RawRecord, mediaType: MediaType): MobileDe
       episodeRunTime: asNumberArray(raw.episode_run_time),
       inProduction: asBoolean(raw.in_production),
       networks: normalizeCompanies(raw.networks),
+      creators,
+      productionCountries,
       seasons,
       episodeGroups: normalizeEpisodeGroupSummaries(raw.episode_groups),
       recommendedEpisodeGroupId: groupId,

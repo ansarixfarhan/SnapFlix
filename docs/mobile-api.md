@@ -154,6 +154,11 @@ recommendations, similar titles and external IDs. TV details also include
 seasons (with `episodesEndpoint`), episode-group summaries and the recommended
 episode-group endpoint.
 
+TV Story facts include `creators`/`created_by` and
+`productionCountries`/`production_countries` at the top level, plus `creators`
+and `productionCountries` inside `tv`. Creators expose `id`, `name`,
+`profilePath` and `creditId`; production countries expose `code` and `name`.
+
 Additive Story fields are also included:
 
 - `images.logos`, `titleLogo`, `titleLogoPath`: available title logos and the
@@ -207,7 +212,7 @@ GET /api/mobile/v1/discover?content=movie&genres=28,12&sortBy=popularity.desc&pa
 | Parameter | Required | Values |
 | --- | --- | --- |
 | `content`, `mediaType` or `type` | no | `movie`, `tv`; default depends on filter |
-| `genres`, `with_genres` or `genre` | no | up to 10 numeric TMDB genre IDs, comma or pipe separated |
+| `genres`, `with_genres` or `genre` | no | up to 10 numeric TMDB genre IDs, comma or pipe separated; 1–6 digits, so five-digit TV IDs like `10759`, `10765` and `10751` are accepted |
 | `sortBy`, `sort_by` or `sort` | no, default `popularity.desc` | fixed TMDB sort allowlist |
 | `preset`, `filter`, `category` or preset-style `type` | no, default `none` | `none`, `anime`, `korean`, `kdrama` |
 | `originalLanguage` or `with_original_language` | no | `ja`, `ko`, `en`, `zh`, `hi`, `es`, `fr`, `de`, `it`, `pt`, `th`, `id` |
@@ -331,9 +336,10 @@ Compatibility aliases: `/collections`, `/movie-collection`,
 - Unknown or duplicate query parameters are rejected with `400`; repeated
   `genres`/`with_genres`/`genre` and keyword-list values are allowed for
   compatibility.
-- Media types, collection names, pages, IDs, seasons, group IDs, genre IDs,
-  Discover presets, original languages, origin countries, keyword IDs, sort
-  values and IMDb IDs are checked against fixed allowlists and numeric bounds.
+- Media types, collection names, pages, IDs, seasons, group IDs, genre IDs
+  (1–6 digits), Discover presets, original languages, origin countries, keyword
+  IDs, sort values and IMDb IDs are checked against fixed allowlists and numeric
+  bounds.
 - Search text is trimmed, normalized, control-character checked and capped at
   120 characters.
 - TMDB URLs and query keys are built internally; clients cannot pass arbitrary

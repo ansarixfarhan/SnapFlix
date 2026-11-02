@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
+import { MAX_UPSTREAM_BODY_BYTES } from "../../src/lib/mobile/constants";
 import { MobileError } from "../../src/lib/mobile/errors";
 import { getMobileTmdbToken, mobileTmdbGet } from "../../src/lib/mobile/tmdb";
 
@@ -163,4 +164,95 @@ test("discover and find query keys are allowlisted and passed upstream safely", 
   assert.equal(capturedUrls[0].searchParams.get("include_adult"), "false");
   assert.equal(capturedUrls[1].pathname, "/3/find/tt1234567");
   assert.equal(capturedUrls[1].searchParams.get("external_source"), "imdb_id");
+});
+
+test("timeout stays active until the response body has been read", async () => {
+  const encoder = new TextEncoder();
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const signal = init?.signal as AbortSignal | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        const timer = setTimeout(() => {
+          streamController.enqueue(encoder.encode('{"id":1}'));
+          streamController.close();
+        }, 80);
+        const abort = () => {
+          clearTimeout(timer);
+          streamController.error(new DOMException("aborted", "AbortError"));
+        };
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  await assert.rejects(
+    mobileTmdbGet("/movie/1", {}, 60, 25),
+    (error: unknown) =>
+      error instanceof MobileError &&
+      error.code === "upstream_unavailable" &&
+      error.status === 504 &&
+      error.retryable === true &&
+      /timed out/i.test(error.message),
+  );
+});
+
+test("streaming byte cap cancels an oversized response before JSON parsing", async () => {
+  let cancelled = false;
+  let secondChunkSent = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(streamController) {
+      streamController.enqueue(new Uint8Array(MAX_UPSTREAM_BODY_BYTES));
+    },
+    pull(streamController) {
+      if (!secondChunkSent) {
+        secondChunkSent = true;
+        streamController.enqueue(new Uint8Array(1));
+      }
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+
+  await assert.rejects(
+    mobileTmdbGet("/movie/1", {}, 60, 1_000),
+    (error: unknown) =>
+      error instanceof MobileError &&
+      error.code === "upstream_response_too_large" &&
+      error.status === 502 &&
+      error.retryable === false,
+  );
+  assert.equal(secondChunkSent, true);
+  assert.equal(cancelled, true);
+});
+
+test("an oversized declared content-length is rejected before streaming", async () => {
+  globalThis.fetch = (async () =>
+    new Response(new Uint8Array(0), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(MAX_UPSTREAM_BODY_BYTES + 1),
+      },
+    })) as typeof fetch;
+
+  await assert.rejects(
+    mobileTmdbGet("/movie/1", {}, 60),
+    (error: unknown) =>
+      error instanceof MobileError &&
+      error.code === "upstream_response_too_large" &&
+      error.status === 502 &&
+      error.retryable === false,
+  );
 });

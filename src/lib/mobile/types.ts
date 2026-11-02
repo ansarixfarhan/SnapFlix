@@ -29,6 +29,7 @@ export type MobileErrorCode =
   | "not_found"
   | "upstream_rate_limited"
   | "upstream_unavailable"
+  | "upstream_response_too_large"
   | "internal_error";
 
 export type MobileImage = {

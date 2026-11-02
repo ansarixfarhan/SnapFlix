@@ -30,6 +30,13 @@ export type TmdbRawRecord = Record<string, unknown>;
 
 type CachedRequestInit = RequestInit & { next?: { revalidate: number } };
 
+class ResponseBodyTooLargeError extends Error {
+  constructor() {
+    super("TMDB response exceeded the streaming byte limit");
+    this.name = "ResponseBodyTooLargeError";
+  }
+}
+
 /**
  * Strictly reads the server-only v4 read access token. Public NEXT_PUBLIC_*
  * variables, v3 API keys and website fallback credentials are never used here.
@@ -83,49 +90,50 @@ function retryAfterSeconds(response: Response): number {
   return 30;
 }
 
-export async function mobileTmdbGet<T>(
-  path: string,
-  params: TmdbQueryParams = {},
-  revalidateSeconds = 600,
-): Promise<T> {
-  const token = getMobileTmdbToken();
-  if (!token) throw new MobileError(
-    "service_unconfigured",
-    503,
-    "The mobile metadata service is not configured on the server.",
+function isAbortError(error: unknown, signal: AbortSignal): boolean {
+  if (signal.aborted) return true;
+  if (!error || typeof error !== "object") return false;
+  const name = (error as { name?: unknown }).name;
+  return name === "AbortError" || name === "TimeoutError";
+}
+
+function timeoutError(error: unknown): MobileError {
+  return new MobileError(
+    "upstream_unavailable",
+    504,
+    "The metadata provider timed out. Please try again shortly.",
+    { retryable: true, retryAfterSeconds: 5, cause: error },
   );
+}
 
-  const url = buildTmdbUrl(path, params);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  let response: Response;
+function requestFailure(error: unknown, signal: AbortSignal): MobileError {
+  if (isAbortError(error, signal)) return timeoutError(error);
+  return new MobileError(
+    "upstream_unavailable",
+    502,
+    "The metadata provider is temporarily unavailable.",
+    { retryable: true, retryAfterSeconds: 15, cause: error },
+  );
+}
 
-  const init: CachedRequestInit = {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${token}`,
-    },
-    signal: controller.signal,
-    next: { revalidate: Math.max(1, Math.floor(revalidateSeconds)) },
-  };
+function tooLargeError(): MobileError {
+  return new MobileError(
+    "upstream_response_too_large",
+    502,
+    "The metadata provider returned an oversized response.",
+  );
+}
 
-  try {
-    response = await fetch(url, init);
-  } catch (error) {
-    const aborted = error instanceof Error && error.name === "AbortError";
-    throw new MobileError(
-      "upstream_unavailable",
-      aborted ? 504 : 502,
-      aborted
-        ? "The metadata provider timed out. Please try again shortly."
-        : "The metadata provider is temporarily unavailable.",
-      { retryable: true, retryAfterSeconds: aborted ? 5 : 15, cause: error },
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
+function invalidResponseError(error: unknown): MobileError {
+  return new MobileError(
+    "upstream_unavailable",
+    502,
+    "The metadata provider returned an invalid response.",
+    { cause: error },
+  );
+}
 
+function ensureOkResponse(response: Response): void {
   if (response.status === 401 || response.status === 403) {
     throw new MobileError(
       "upstream_unauthorized",
@@ -152,25 +160,103 @@ export async function mobileTmdbGet<T>(
       { retryable: response.status >= 500, retryAfterSeconds: response.status >= 500 ? 15 : null },
     );
   }
+}
 
+async function readStreamingJson<T>(
+  response: Response,
+  controller: AbortController,
+): Promise<T> {
   const declaredLength = Number(response.headers.get("content-length") ?? "0");
   if (Number.isFinite(declaredLength) && declaredLength > MAX_UPSTREAM_BODY_BYTES) {
-    throw new MobileError("upstream_unavailable", 502, "The metadata provider returned an invalid response.");
+    if (response.body) {
+      await response.body.cancel().catch(() => undefined);
+    }
+    controller.abort();
+    throw new ResponseBodyTooLargeError();
   }
 
+  const body = response.body;
+  if (!body) return JSON.parse("") as T;
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+
   try {
-    const text = await response.text();
-    if (text.length > MAX_UPSTREAM_BODY_BYTES) {
-      throw new Error("TMDB response too large");
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      if (totalBytes + value.byteLength > MAX_UPSTREAM_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        controller.abort();
+        throw new ResponseBodyTooLargeError();
+      }
+
+      totalBytes += value.byteLength;
+      text += decoder.decode(value, { stream: true });
     }
+    text += decoder.decode();
     return JSON.parse(text) as T;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // The stream may already be released when an abort/cancel wins the race.
+    }
+  }
+}
+
+export async function mobileTmdbGet<T>(
+  path: string,
+  params: TmdbQueryParams = {},
+  revalidateSeconds = 600,
+  timeoutMs: number = UPSTREAM_TIMEOUT_MS,
+): Promise<T> {
+  const token = getMobileTmdbToken();
+  if (!token) throw new MobileError(
+    "service_unconfigured",
+    503,
+    "The mobile metadata service is not configured on the server.",
+  );
+
+  const url = buildTmdbUrl(path, params);
+  const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? Math.min(2_147_483_647, Math.max(1, Math.floor(timeoutMs)))
+    : UPSTREAM_TIMEOUT_MS;
+  const controller = new AbortController();
+  // This timer deliberately covers the whole response, including body reads.
+  const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+
+  const init: CachedRequestInit = {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    signal: controller.signal,
+    next: { revalidate: Math.max(1, Math.floor(revalidateSeconds)) },
+  };
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(url, init);
+    } catch (error) {
+      throw requestFailure(error, controller.signal);
+    }
+
+    ensureOkResponse(response);
+    return await readStreamingJson<T>(response, controller);
   } catch (error) {
-    throw new MobileError(
-      "upstream_unavailable",
-      502,
-      "The metadata provider returned an invalid response.",
-      { cause: error },
-    );
+    if (error instanceof MobileError) throw error;
+    if (error instanceof ResponseBodyTooLargeError) throw tooLargeError();
+    if (isAbortError(error, controller.signal)) throw timeoutError(error);
+    throw invalidResponseError(error);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -178,6 +264,7 @@ export async function mobileTmdbGetList(
   path: string,
   params: TmdbQueryParams = {},
   revalidateSeconds = 600,
+  timeoutMs: number = UPSTREAM_TIMEOUT_MS,
 ): Promise<TmdbRawList> {
-  return mobileTmdbGet<TmdbRawList>(path, params, revalidateSeconds);
+  return mobileTmdbGet<TmdbRawList>(path, params, revalidateSeconds, timeoutMs);
 }

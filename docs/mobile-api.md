@@ -258,7 +258,8 @@ Compatibility aliases:
   paths, `api_key`, `append_to_response` or headers upstream.
 - `language=en-US`, `include_adult=false` and `external_source=imdb_id` are
   fixed where supported.
-- Upstream responses are size-limited and requests time out after 8 seconds.
+- Upstream responses are streamed with a hard byte cap and requests time out
+  after 8 seconds; the timeout covers the full body read, not just the headers.
 - A per-isolate token bucket allows 60 requests/minute per Cloudflare IP; home
   and search cost 2 tokens. `429` includes `Retry-After`.
 - Optional shared-key gate: set the `MOBILE_API_KEY` Worker secret and send it
@@ -396,7 +397,7 @@ No client-side TMDB token needs to be configured for these endpoints.
 | 429 | `client_rate_limited` | Per-IP request budget exceeded |
 | 404 | `not_found` | TMDB title not found |
 | 500 | `internal_error` | Unexpected server failure |
-| 502 | `upstream_unauthorized`, `upstream_unavailable` | TMDB credential or provider failure |
+| 502 | `upstream_unauthorized`, `upstream_unavailable`, `upstream_response_too_large` | TMDB credential, provider or oversized-response failure |
 | 503 | `service_unconfigured`, `upstream_rate_limited` | Missing server secret or TMDB busy |
 | 504 | `upstream_unavailable` | TMDB request timed out |
 

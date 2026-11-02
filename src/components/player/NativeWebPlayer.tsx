@@ -125,6 +125,18 @@ export const LANGUAGE_COUNTRY_CODES: Record<string, string> = {
   Marathi: 'in',
   Gujarati: 'in',
   Urdu: 'pk',
+  Croatian: 'hr',
+  Bulgarian: 'bg',
+  Serbian: 'rs',
+  Slovenian: 'si',
+  Slovak: 'sk',
+  Albanian: 'al',
+  Macedonian: 'mk',
+  Estonian: 'ee',
+  Lithuanian: 'lt',
+  Latvian: 'lv',
+  Bosnian: 'ba',
+  Icelandic: 'is',
 };
 
 export interface SubtitleMeta {
@@ -137,48 +149,68 @@ export const SUBTITLE_LANGUAGE_DEFINITIONS: Array<{
   langCode: string;
   countryCode: string;
 }> = [
-  { matches: ['arabic', 'العربية', 'عرب', 'arabi', 'ara'], langCode: 'AR', countryCode: 'sa' },
-  { matches: ['spanish', 'español', 'espanol', 'castellano', 'espana', 'spa'], langCode: 'ES', countryCode: 'es' },
-  { matches: ['french', 'français', 'francais', 'fra', 'fre'], langCode: 'FR', countryCode: 'fr' },
-  { matches: ['indonesian', 'indonesia', 'bahasa indonesia', 'ind'], langCode: 'ID', countryCode: 'id' },
-  { matches: ['malay', 'melayu', 'bahasa melayu', 'may', 'msa'], langCode: 'MS', countryCode: 'my' },
-  { matches: ['portuguese', 'português', 'portugues', 'por'], langCode: 'PT', countryCode: 'br' },
-  { matches: ['hindi', 'हिन्दी', 'hindustani', 'hin'], langCode: 'HI', countryCode: 'in' },
-  { matches: ['german', 'deutsch', 'ger', 'deu'], langCode: 'DE', countryCode: 'de' },
-  { matches: ['italian', 'italiano', 'ita'], langCode: 'IT', countryCode: 'it' },
-  { matches: ['russian', 'русский', 'rus'], langCode: 'RU', countryCode: 'ru' },
-  { matches: ['japanese', '日本語', 'jap', 'jpn'], langCode: 'JA', countryCode: 'jp' },
-  { matches: ['korean', '한국어', 'kor'], langCode: 'KO', countryCode: 'kr' },
-  { matches: ['chinese', '中文', 'mandarin', 'cantonese', 'chi', 'zho'], langCode: 'ZH', countryCode: 'cn' },
-  { matches: ['turkish', 'türkçe', 'turkce', 'tur'], langCode: 'TR', countryCode: 'tr' },
-  { matches: ['vietnamese', 'tiếng việt', 'tieng viet', 'vie'], langCode: 'VI', countryCode: 'vn' },
-  { matches: ['thai', 'ไทย', 'tha'], langCode: 'TH', countryCode: 'th' },
-  { matches: ['dutch', 'nederlands', 'nld', 'dut'], langCode: 'NL', countryCode: 'nl' },
-  { matches: ['polish', 'polski', 'pol'], langCode: 'PL', countryCode: 'pl' },
-  { matches: ['swedish', 'svenska', 'swe'], langCode: 'SV', countryCode: 'se' },
-  { matches: ['norwegian', 'norsk', 'nor'], langCode: 'NO', countryCode: 'no' },
-  { matches: ['danish', 'dansk', 'dan'], langCode: 'DA', countryCode: 'dk' },
-  { matches: ['finnish', 'suomi', 'fin'], langCode: 'FI', countryCode: 'fi' },
-  { matches: ['greek', 'ελληνικά', 'ell', 'gre'], langCode: 'EL', countryCode: 'gr' },
-  { matches: ['hebrew', 'עברית', 'heb'], langCode: 'HE', countryCode: 'il' },
-  { matches: ['czech', 'čeština', 'cestina', 'ces', 'cze'], langCode: 'CS', countryCode: 'cz' },
-  { matches: ['hungarian', 'magyar', 'hun'], langCode: 'HU', countryCode: 'hu' },
-  { matches: ['romanian', 'română', 'romana', 'ron', 'rum'], langCode: 'RO', countryCode: 'ro' },
-  { matches: ['ukrainian', 'українська', 'ukr'], langCode: 'UK', countryCode: 'ua' },
-  { matches: ['tagalog', 'filipino', 'tgl'], langCode: 'TL', countryCode: 'ph' },
-  { matches: ['persian', 'farsi', 'فارسی', 'fas', 'per'], langCode: 'FA', countryCode: 'ir' },
-  { matches: ['bengali', 'bangla', 'বাংলা', 'ben'], langCode: 'BN', countryCode: 'bd' },
-  { matches: ['tamil', 'தமிழ்', 'tam'], langCode: 'TA', countryCode: 'in' },
-  { matches: ['telugu', 'తెలుగు', 'tel'], langCode: 'TE', countryCode: 'in' },
-  { matches: ['kannada', 'ಕನ್ನಡ', 'kan'], langCode: 'KN', countryCode: 'in' },
-  { matches: ['malayalam', 'മലയാളം', 'mal'], langCode: 'ML', countryCode: 'in' },
-  { matches: ['marathi', 'मराठी', 'mar'], langCode: 'MR', countryCode: 'in' },
-  { matches: ['gujarati', 'ગુજરાતી', 'guj'], langCode: 'GU', countryCode: 'in' },
-  { matches: ['urdu', 'اردو', 'urd'], langCode: 'UR', countryCode: 'pk' },
-  { matches: ['english', 'inglés', 'ingles', 'eng'], langCode: 'EN', countryCode: 'gb' },
+  // South Asian Languages
+  { matches: ['hindi', 'हिन्दी', 'hindustani', 'hin', 'hi'], langCode: 'HI', countryCode: 'in' },
+  { matches: ['bengali', 'bangla', 'বাংলা', 'ben', 'bn'], langCode: 'BN', countryCode: 'bd' },
+  { matches: ['tamil', 'தமிழ்', 'tam', 'ta'], langCode: 'TA', countryCode: 'in' },
+  { matches: ['telugu', 'తెలుగు', 'tel', 'te'], langCode: 'TE', countryCode: 'in' },
+  { matches: ['kannada', 'ಕನ್ನಡ', 'kan', 'kn'], langCode: 'KN', countryCode: 'in' },
+  { matches: ['malayalam', 'മലയാളം', 'mal', 'ml'], langCode: 'ML', countryCode: 'in' },
+  { matches: ['marathi', 'मराठी', 'mar', 'mr'], langCode: 'MR', countryCode: 'in' },
+  { matches: ['gujarati', 'ગુજરાતી', 'guj', 'gu'], langCode: 'GU', countryCode: 'in' },
+  { matches: ['punjabi', 'ਪੰਜਾਬੀ', 'pan', 'pa'], langCode: 'PA', countryCode: 'in' },
+  { matches: ['urdu', 'اردو', 'urd', 'ur'], langCode: 'UR', countryCode: 'pk' },
+
+  // Major World Languages
+  { matches: ['english', 'inglés', 'ingles', 'eng', 'en'], langCode: 'EN', countryCode: 'gb' },
+  { matches: ['spanish', 'español', 'espanol', 'castellano', 'espana', 'spa', 'es'], langCode: 'ES', countryCode: 'es' },
+  { matches: ['french', 'français', 'francais', 'fra', 'fre', 'fr'], langCode: 'FR', countryCode: 'fr' },
+  { matches: ['portuguese', 'português', 'portugues', 'por', 'pt'], langCode: 'PT', countryCode: 'br' },
+  { matches: ['german', 'deutsch', 'ger', 'deu', 'de'], langCode: 'DE', countryCode: 'de' },
+  { matches: ['italian', 'italiano', 'ita', 'it'], langCode: 'IT', countryCode: 'it' },
+  { matches: ['russian', 'русский', 'rus', 'ru'], langCode: 'RU', countryCode: 'ru' },
+  { matches: ['japanese', '日本語', 'jap', 'jpn', 'ja'], langCode: 'JA', countryCode: 'jp' },
+  { matches: ['korean', '한국어', 'kor', 'ko'], langCode: 'KO', countryCode: 'kr' },
+  { matches: ['chinese', '中文', 'mandarin', 'cantonese', 'chi', 'zho', 'zh'], langCode: 'ZH', countryCode: 'cn' },
+  { matches: ['arabic', 'العربية', 'عرب', 'arabi', 'ara', 'ar'], langCode: 'AR', countryCode: 'sa' },
+  { matches: ['turkish', 'türkçe', 'turkce', 'tur', 'tr'], langCode: 'TR', countryCode: 'tr' },
+  { matches: ['dutch', 'nederlands', 'nld', 'dut', 'nl'], langCode: 'NL', countryCode: 'nl' },
+  { matches: ['polish', 'polski', 'pol', 'pl'], langCode: 'PL', countryCode: 'pl' },
+
+  // Southeast Asian Languages
+  { matches: ['indonesian', 'indonesia', 'bahasa indonesia', 'ind', 'id'], langCode: 'ID', countryCode: 'id' },
+  { matches: ['malay', 'melayu', 'bahasa melayu', 'may', 'msa', 'ms'], langCode: 'MS', countryCode: 'my' },
+  { matches: ['vietnamese', 'tiếng việt', 'tieng viet', 'vie', 'vi'], langCode: 'VI', countryCode: 'vn' },
+  { matches: ['thai', 'ไทย', 'tha', 'th'], langCode: 'TH', countryCode: 'th' },
+  { matches: ['tagalog', 'filipino', 'tgl', 'tl'], langCode: 'TL', countryCode: 'ph' },
+
+  // European & Balkan Languages
+  { matches: ['croatian', 'hrvatski', 'hrv', 'hr'], langCode: 'HR', countryCode: 'hr' },
+  { matches: ['serbian', 'srpski', 'srp', 'sr'], langCode: 'SR', countryCode: 'rs' },
+  { matches: ['bosnian', 'bosanski', 'bos', 'bs'], langCode: 'BS', countryCode: 'ba' },
+  { matches: ['slovenian', 'slovenski', 'slv', 'sl'], langCode: 'SL', countryCode: 'si' },
+  { matches: ['bulgarian', 'български', 'bul', 'bg'], langCode: 'BG', countryCode: 'bg' },
+  { matches: ['macedonian', 'македонски', 'mkd', 'mk'], langCode: 'MK', countryCode: 'mk' },
+  { matches: ['albanian', 'shqip', 'sqi', 'alb', 'sq'], langCode: 'SQ', countryCode: 'al' },
+  { matches: ['greek', 'ελληνικά', 'ell', 'gre', 'el'], langCode: 'EL', countryCode: 'gr' },
+  { matches: ['czech', 'čeština', 'cestina', 'ces', 'cze', 'cs'], langCode: 'CS', countryCode: 'cz' },
+  { matches: ['slovak', 'slovenčina', 'slovencina', 'slk', 'sk'], langCode: 'SK', countryCode: 'sk' },
+  { matches: ['hungarian', 'magyar', 'hun', 'hu'], langCode: 'HU', countryCode: 'hu' },
+  { matches: ['romanian', 'română', 'romana', 'ron', 'rum', 'ro'], langCode: 'RO', countryCode: 'ro' },
+  { matches: ['ukrainian', 'українська', 'ukr', 'ua', 'uk'], langCode: 'UK', countryCode: 'ua' },
+  { matches: ['swedish', 'svenska', 'swe', 'sv'], langCode: 'SV', countryCode: 'se' },
+  { matches: ['norwegian', 'norsk', 'nor', 'no'], langCode: 'NO', countryCode: 'no' },
+  { matches: ['danish', 'dansk', 'dan', 'da'], langCode: 'DA', countryCode: 'dk' },
+  { matches: ['finnish', 'suomi', 'fin', 'fi'], langCode: 'FI', countryCode: 'fi' },
+  { matches: ['estonian', 'eesti', 'est', 'et'], langCode: 'ET', countryCode: 'ee' },
+  { matches: ['lithuanian', 'lietuvių', 'lit', 'lt'], langCode: 'LT', countryCode: 'lt' },
+  { matches: ['latvian', 'latviešu', 'lav', 'lv'], langCode: 'LV', countryCode: 'lv' },
+  { matches: ['hebrew', 'עברית', 'heb', 'he'], langCode: 'HE', countryCode: 'il' },
+  { matches: ['persian', 'farsi', 'فارسی', 'fas', 'per', 'fa'], langCode: 'FA', countryCode: 'ir' },
+  { matches: ['icelandic', 'íslenska', 'isl', 'is'], langCode: 'IS', countryCode: 'is' },
 ];
 
-export const normalizeForLanguageCheck = (str: string): string =>
+export const normalizeForLanguageCheck = (str?: string | null): string =>
   (str || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f\u064B-\u065F\u0670]/g, '')
@@ -187,50 +219,45 @@ export const normalizeForLanguageCheck = (str: string): string =>
 
 export const getSubtitleMeta = (sub: { title: string; language?: string }): SubtitleMeta => {
   const normTitle = normalizeForLanguageCheck(sub.title);
-  const rawTitle = (sub.title || '').trim();
+  const cleanLang = normalizeForLanguageCheck(sub.language || '');
 
-  // 1. High Priority: Detect language directly from Title / Label
-  // Fixes issues where upstream provider defaults language to "en" for non-English subtitles
-  if (normTitle) {
-    for (const def of SUBTITLE_LANGUAGE_DEFINITIONS) {
-      for (const match of def.matches) {
-        const normMatch = normalizeForLanguageCheck(match);
-        if (
-          normTitle === normMatch ||
-          normTitle.startsWith(`${normMatch} `) ||
-          normTitle.startsWith(`${normMatch}-`) ||
-          normTitle.startsWith(`${normMatch}_`) ||
-          normTitle.endsWith(` ${normMatch}`) ||
-          normTitle.includes(` ${normMatch} `) ||
-          normTitle.includes(`(${normMatch})`) ||
-          normTitle.includes(`[${normMatch}]`) ||
-          (normMatch.length >= 4 && normTitle.includes(normMatch)) ||
-          rawTitle.includes(match)
-        ) {
-          let country = def.countryCode;
-          if (def.langCode === 'PT' && normTitle.includes('portugal')) country = 'pt';
-          if (def.langCode === 'ES' && (normTitle.includes('latino') || normTitle.includes('latin'))) country = 'mx';
-          if (def.langCode === 'ZH' && (normTitle.includes('taiwan') || normTitle.includes('traditional'))) country = 'tw';
-          return { langCode: def.langCode, countryCode: country };
-        }
+  // 1. Pass 1: Exact whole-string match (Highest confidence, e.g. "Hindi", "English", "Croatian")
+  for (const def of SUBTITLE_LANGUAGE_DEFINITIONS) {
+    for (const match of def.matches) {
+      const normMatch = normalizeForLanguageCheck(match);
+      if (normTitle === normMatch || cleanLang === normMatch) {
+        let country = def.countryCode;
+        if (def.langCode === 'PT' && (normTitle.includes('portugal') || cleanLang.includes('pt-pt'))) country = 'pt';
+        if (def.langCode === 'ES' && (normTitle.includes('latino') || normTitle.includes('latin'))) country = 'mx';
+        if (def.langCode === 'ZH' && (normTitle.includes('taiwan') || normTitle.includes('traditional'))) country = 'tw';
+        return { langCode: def.langCode, countryCode: country };
       }
     }
   }
 
-  // 2. Secondary Priority: Check sub.language if title didn't yield a match
-  const cleanLang = (sub.language || '').toLowerCase().trim();
-  if (cleanLang && cleanLang !== 'und' && cleanLang !== 'unknown') {
-    for (const def of SUBTITLE_LANGUAGE_DEFINITIONS) {
-      if (def.langCode.toLowerCase() === cleanLang || def.matches.includes(cleanLang)) {
-        return { langCode: def.langCode, countryCode: def.countryCode };
+  // 2. Pass 2: Delimiter-bounded word token matching (e.g. "Avengers.Hindi.srt", "English [CC]")
+  // Strictly uses boundaries so 'ind' won't match inside 'hindi', 'hin' won't match inside 'chinese'
+  for (const def of SUBTITLE_LANGUAGE_DEFINITIONS) {
+    for (const match of def.matches) {
+      const normMatch = normalizeForLanguageCheck(match);
+      const escaped = normMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`(?:^|[\\s._\\-\\[\\](),/])${escaped}(?:$|[\\s._\\-\\[\\](),/])`, 'i');
+      if (pattern.test(normTitle) || pattern.test(cleanLang)) {
+        let country = def.countryCode;
+        if (def.langCode === 'PT' && (normTitle.includes('portugal') || cleanLang.includes('pt-pt'))) country = 'pt';
+        if (def.langCode === 'ES' && (normTitle.includes('latino') || normTitle.includes('latin'))) country = 'mx';
+        if (def.langCode === 'ZH' && (normTitle.includes('taiwan') || normTitle.includes('traditional'))) country = 'tw';
+        return { langCode: def.langCode, countryCode: country };
       }
-    }
-    if (cleanLang.length === 2) {
-      return { langCode: cleanLang.toUpperCase(), countryCode: cleanLang };
     }
   }
 
-  // 3. Fallback for custom/unrecognized subtitles: no flag, clean code only if short & recognized
+  // 3. Pass 3: 2-letter ISO code fallback
+  if (cleanLang && cleanLang.length === 2 && cleanLang !== 'un') {
+    return { langCode: cleanLang.toUpperCase(), countryCode: cleanLang };
+  }
+
+  // 4. Fallback for custom/unrecognized subtitles
   return {
     langCode: cleanLang && cleanLang.length <= 4 && cleanLang !== 'und' && cleanLang !== 'unknown'
       ? cleanLang.toUpperCase()

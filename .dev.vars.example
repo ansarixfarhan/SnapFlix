@@ -1,1 +1,6 @@
 NEXTJS_ENV=development
+
+# For local `wrangler dev`, put real values in an untracked `.dev.vars` file.
+# Never commit secrets. The mobile metadata API reads only TMDB_ACCESS_TOKEN.
+# TMDB_ACCESS_TOKEN=<local-value-only>
+# MOBILE_API_KEY=<optional-local-app-key>

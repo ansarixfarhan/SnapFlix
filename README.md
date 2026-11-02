@@ -136,6 +136,10 @@ NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
 ```
 
+> The separate mobile metadata API requires the server-only
+> `TMDB_ACCESS_TOKEN` and does not use public/fallback TMDB credentials. See
+> [Mobile API documentation](docs/mobile-api.md).
+
 ### 3. Local Development
 ```bash
 npm run dev
@@ -146,6 +150,26 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 SnapFlix Web builds and deploys directly to Cloudflare via OpenNext and Wrangler:
 ```bash
 npm run deploy
+```
+
+### 5. Mobile Metadata API
+
+The mobile app has its own versioned TMDB metadata API under
+`/api/mobile/v1/`: home, list, search, details, episodes, episode groups,
+genre Discover, genre lists and IMDb-to-TMDB lookup. It uses only the
+server-side `TMDB_ACCESS_TOKEN`, fixed TMDB paths, strict input validation,
+layered caching and request-rate protection. Home returns partial results if a
+single row fails, and the optional app-key gate disables public CDN caching so
+it cannot be bypassed by a cache hit. The existing provider/stream resolver and
+website playback are unchanged.
+
+Endpoint contracts, Cloudflare secret/cache/WAF setup and targeted test
+commands are documented in [docs/mobile-api.md](docs/mobile-api.md).
+
+```bash
+npm run test:mobile-api
+npm run typecheck:mobile
+npm run typecheck
 ```
 
 ---

@@ -1,4 +1,6 @@
 {
+  // Secrets (TMDB_ACCESS_TOKEN and optional MOBILE_API_KEY) belong in Worker
+  // secrets or an untracked .dev.vars file, never in the plaintext vars below.
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "snapflix",
   "main": ".open-next/worker.js",

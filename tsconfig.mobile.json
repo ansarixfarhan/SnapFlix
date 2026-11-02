@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["node"]
+  },
+  "include": [
+    "src/lib/mobile/**/*.ts",
+    "src/app/api/mobile/**/*.ts",
+    "src/utils/seasonResolver.ts",
+    "src/middleware.ts",
+    "tests/mobile/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -1,14 +1,22 @@
 import {
   DEFAULT_SORT_BY,
+  DISCOVER_PRESETS,
+  DISCOVER_PRESET_VALUES,
+  MAX_COUNTRY_CODES,
   MAX_GENRE_ID,
   MAX_GENRE_IDS,
   MAX_GROUP_ID_LENGTH,
+  MAX_KEYWORD_ID,
+  MAX_KEYWORD_IDS,
   MAX_PAGE,
   MAX_SEARCH_LENGTH,
   MAX_SEASON_NUMBER,
   MAX_TMDB_ID,
   MOBILE_API_PREFIX,
+  VALID_ORIGINAL_LANGUAGES,
+  VALID_ORIGIN_COUNTRIES,
   VALID_SORT_BY,
+  type MobileDiscoverPreset,
   type MobileDiscoverSortBy,
 } from "./constants";
 import { cleanText, hasControlCharacters, safeGroupId } from "./text";
@@ -34,11 +42,20 @@ export type EpisodesParams = { tvId: number; season: number };
 export type EpisodeGroupParams = { groupId: string };
 export type DiscoverParams = {
   content: MediaType;
+  preset: MobileDiscoverPreset;
   genreIds: number[];
   withGenres: string;
   sortBy: MobileDiscoverSortBy;
   page: number;
+  originalLanguage: string | null;
+  originCountry: string | null;
+  keywordIds: number[];
+  keywords: string;
+  withoutKeywordIds: number[];
+  withoutKeywords: string;
 };
+export type TitleLogoParams = { mediaType: MediaType; id: number };
+export type CollectionParams = { collectionId: number };
 export type GenresParams = { content: MediaType };
 export type FindParams = {
   imdbId: string;
@@ -58,6 +75,10 @@ const INVALID_ID = "A valid TMDB id is required.";
 const INVALID_SEASON = "Season must be an integer between 0 and 999.";
 const INVALID_GENRES = "Genres must be a short list of numeric TMDB genre ids.";
 const INVALID_SORT = "sortBy must be one of the supported TMDB sort values.";
+const INVALID_PRESET = "filter must be one of: none, anime, korean, kdrama.";
+const INVALID_LANGUAGE = "originalLanguage must be one of the supported language codes.";
+const INVALID_COUNTRY = "originCountry must be one of the supported country codes.";
+const INVALID_KEYWORDS = "Keywords must be a short list of numeric TMDB keyword ids.";
 const INVALID_IMDB_ID = "A valid IMDb title id is required.";
 
 const MEDIA_TYPES: readonly MediaType[] = ["movie", "tv"];
@@ -73,7 +94,20 @@ const DISCOVER_PARAM_NAMES = [
   "sortBy",
   "sort_by",
   "sort",
+  "preset",
+  "filter",
+  "category",
+  "originalLanguage",
+  "with_original_language",
+  "originCountry",
+  "with_origin_country",
+  "keywords",
+  "with_keywords",
+  "excludeKeywords",
+  "without_keywords",
 ] as const;
+const TITLE_LOGO_PARAM_NAMES = ["mediaType", "content", "type", "id"] as const;
+const COLLECTION_PARAM_NAMES = ["collectionId", "collection_id", "id"] as const;
 const FIND_PARAM_NAMES = [
   "imdbId",
   "imdb_id",
@@ -270,6 +304,109 @@ function parseSortBy(params: QueryLike): MobileDiscoverSortBy | null {
   return unique[0] as MobileDiscoverSortBy;
 }
 
+function parseNumericList(
+  params: QueryLike,
+  names: readonly string[],
+  maxId: number,
+  maxCount: number,
+): { ids: number[]; value: string } | null {
+  const values = aliasValues(params, names);
+  if (values.length === 0) return { ids: [], value: "" };
+
+  const usesComma = values.some((value) => value.includes(","));
+  const usesPipe = values.some((value) => value.includes("|"));
+  if (usesComma && usesPipe) return null;
+  const separator = usesPipe ? "|" : ",";
+  const ids: number[] = [];
+
+  for (const value of values) {
+    if (value.length > 200 || hasControlCharacters(value)) return null;
+    for (const part of value.split(/[,\|]/)) {
+      const trimmed = part.trim();
+      if (!/^\d{1,7}$/.test(trimmed)) return null;
+      const parsed = Number(trimmed);
+      if (parsed < 1 || parsed > maxId) return null;
+      ids.push(parsed);
+    }
+  }
+
+  const unique = [...new Set(ids)].sort((a, b) => a - b);
+  if (unique.length > maxCount) return null;
+  return { ids: unique, value: unique.join(separator) };
+}
+
+function parseOriginalLanguage(params: QueryLike): string | null {
+  const values = aliasValues(params, ["originalLanguage", "with_original_language"]);
+  if (values.length === 0) return null;
+  const unique = [...new Set(values.map((value) => value.toLowerCase()))];
+  if (unique.length !== 1) return INVALID_LANGUAGE;
+  if (!(VALID_ORIGINAL_LANGUAGES as readonly string[]).includes(unique[0])) return INVALID_LANGUAGE;
+  return unique[0];
+}
+
+function parseOriginCountry(params: QueryLike): string | null {
+  const values = aliasValues(params, ["originCountry", "with_origin_country"]);
+  if (values.length === 0) return null;
+  const unique = [...new Set(values.map((value) => value.toUpperCase()))];
+  if (unique.length !== 1 || unique[0].length > MAX_COUNTRY_CODES * 3) return INVALID_COUNTRY;
+  const codes = unique[0].split(/[,\|]/).map((code) => code.trim());
+  if (
+    codes.length > MAX_COUNTRY_CODES ||
+    codes.some((code) => !(VALID_ORIGIN_COUNTRIES as readonly string[]).includes(code))
+  ) {
+    return INVALID_COUNTRY;
+  }
+  return codes.join(",");
+}
+
+function parsePreset(params: QueryLike): MobileDiscoverPreset | null {
+  const rawAliases = aliasValues(params, ["content", "mediaType", "type"]);
+  const presetFromAliases = rawAliases.filter((value) =>
+    DISCOVER_PRESET_VALUES.includes(value.toLowerCase() as MobileDiscoverPreset),
+  );
+  const values = [
+    ...aliasValues(params, ["preset", "filter", "category"]),
+    ...presetFromAliases,
+  ];
+  if (values.length === 0) return "none";
+
+  const normalized = values.map((value) => {
+    const lower = value.toLowerCase();
+    return lower === "all" ? "none" : lower;
+  });
+  const unique = [...new Set(normalized)];
+  if (unique.length !== 1 || !DISCOVER_PRESET_VALUES.includes(unique[0] as MobileDiscoverPreset)) {
+    return null;
+  }
+  return unique[0] as MobileDiscoverPreset;
+}
+
+function parseDiscoverContent(
+  params: QueryLike,
+  preset: MobileDiscoverPreset,
+): MediaType | null {
+  const rawValues = aliasValues(params, ["content", "mediaType", "type"]);
+  const mediaValues = rawValues
+    .map((value) => value.toLowerCase())
+    .filter(
+      (value) =>
+        value !== "all" && !DISCOVER_PRESET_VALUES.includes(value as MobileDiscoverPreset),
+    );
+  if (mediaValues.length === 0) return DISCOVER_PRESETS[preset].defaultContent as MediaType;
+
+  const unique = [...new Set(mediaValues)];
+  if (unique.length !== 1 || !MEDIA_TYPES.includes(unique[0] as MediaType)) return null;
+  return unique[0] as MediaType;
+}
+
+function splitNumericString(value: string): number[] {
+  if (!value) return [];
+  return value
+    .split(/[,\|]/)
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+}
+
 function normalizeImdbId(raw: string): string | null {
   const value = raw.trim();
   if (/^tt\d{7,10}$/i.test(value)) return value.toLowerCase();
@@ -397,17 +534,17 @@ export function parseDiscoverParams(params: QueryLike): ValidationResult<Discove
     "genres",
     "with_genres",
     "genre",
+    "keywords",
+    "with_keywords",
+    "excludeKeywords",
+    "without_keywords",
   ]);
   if (paramsError) return { ok: false, error: paramsError };
 
-  const content = parseAliasEnum(
-    params,
-    ["content", "mediaType", "type"],
-    MEDIA_TYPES,
-    "movie",
-    INVALID_MEDIA_TYPE,
-  );
-  if (!content.ok) return content;
+  const preset = parsePreset(params);
+  if (!preset) return { ok: false, error: INVALID_PRESET };
+  const content = parseDiscoverContent(params, preset);
+  if (!content) return { ok: false, error: INVALID_MEDIA_TYPE };
 
   const page = parseInteger(one(params, "page"), {
     defaultValue: 1,
@@ -422,16 +559,94 @@ export function parseDiscoverParams(params: QueryLike): ValidationResult<Discove
   const sortBy = parseSortBy(params);
   if (!sortBy) return { ok: false, error: INVALID_SORT };
 
+  const language = parseOriginalLanguage(params);
+  if (language === INVALID_LANGUAGE) return { ok: false, error: INVALID_LANGUAGE };
+  const country = parseOriginCountry(params);
+  if (country === INVALID_COUNTRY) return { ok: false, error: INVALID_COUNTRY };
+  const keywords = parseNumericList(
+    params,
+    ["keywords", "with_keywords"],
+    MAX_KEYWORD_ID,
+    MAX_KEYWORD_IDS,
+  );
+  if (!keywords) return { ok: false, error: INVALID_KEYWORDS };
+  const withoutKeywords = parseNumericList(
+    params,
+    ["excludeKeywords", "without_keywords"],
+    MAX_KEYWORD_ID,
+    MAX_KEYWORD_IDS,
+  );
+  if (!withoutKeywords) return { ok: false, error: INVALID_KEYWORDS };
+
+  const presetConfig = DISCOVER_PRESETS[preset];
+  const resolvedGenres = genres.withGenres || presetConfig.withGenres;
+  const resolvedGenreIds = genres.ids.length > 0 ? genres.ids : [...presetConfig.genreIds];
+  const resolvedLanguage = language ?? presetConfig.originalLanguage;
+  const resolvedCountry = country ?? presetConfig.originCountry;
+  const resolvedKeywords = keywords.value || presetConfig.keywords;
+  const resolvedKeywordIds =
+    keywords.ids.length > 0 ? keywords.ids : splitNumericString(presetConfig.keywords);
+  const resolvedWithoutKeywords = withoutKeywords.value || presetConfig.withoutKeywords;
+  const resolvedWithoutKeywordIds =
+    withoutKeywords.ids.length > 0
+      ? withoutKeywords.ids
+      : splitNumericString(presetConfig.withoutKeywords);
+
   return {
     ok: true,
     value: {
-      content: content.value as MediaType,
-      genreIds: genres.ids,
-      withGenres: genres.withGenres,
+      content,
+      preset,
+      genreIds: resolvedGenreIds,
+      withGenres: resolvedGenres,
       sortBy,
       page: page.value,
+      originalLanguage: resolvedLanguage || null,
+      originCountry: resolvedCountry || null,
+      keywordIds: resolvedKeywordIds,
+      keywords: resolvedKeywords,
+      withoutKeywordIds: resolvedWithoutKeywordIds,
+      withoutKeywords: resolvedWithoutKeywords,
     },
   };
+}
+
+export function parseTitleLogoParams(params: QueryLike): ValidationResult<TitleLogoParams> {
+  const paramsError = validateAllowedParams(params, TITLE_LOGO_PARAM_NAMES);
+  if (paramsError) return { ok: false, error: paramsError };
+
+  const mediaType = parseAliasEnum(
+    params,
+    ["mediaType", "content", "type"],
+    MEDIA_TYPES,
+    "",
+    INVALID_MEDIA_TYPE,
+  );
+  if (!mediaType.ok || !mediaType.value) return { ok: false, error: INVALID_MEDIA_TYPE };
+  const id = parseInteger(one(params, "id"), {
+    required: true,
+    min: 1,
+    max: MAX_TMDB_ID,
+    errorMessage: INVALID_ID,
+  });
+  if (!id.ok) return id;
+  return { ok: true, value: { mediaType: mediaType.value as MediaType, id: id.value } };
+}
+
+export function parseCollectionParams(params: QueryLike): ValidationResult<CollectionParams> {
+  const paramsError = validateAllowedParams(params, COLLECTION_PARAM_NAMES);
+  if (paramsError) return { ok: false, error: paramsError };
+
+  const ids = aliasValues(params, COLLECTION_PARAM_NAMES);
+  if (ids.length !== 1) return { ok: false, error: INVALID_ID };
+  const collectionId = parseInteger(ids[0], {
+    required: true,
+    min: 1,
+    max: MAX_TMDB_ID,
+    errorMessage: INVALID_ID,
+  });
+  if (!collectionId.ok) return collectionId;
+  return { ok: true, value: { collectionId: collectionId.value } };
 }
 
 export function parseGenresParams(params: QueryLike): ValidationResult<GenresParams> {
@@ -530,14 +745,31 @@ export function buildEpisodeGroupEndpoint(groupId: string): string {
 }
 
 export function buildDiscoverEndpoint(
-  content: MediaType,
-  withGenres: string,
-  sortBy: MobileDiscoverSortBy,
-  page: number,
+  params: DiscoverParams,
+  page: number = params.page,
 ): string {
-  const query = new URLSearchParams({ content, sortBy, page: String(page) });
-  if (withGenres) query.set("genres", withGenres);
+  const query = new URLSearchParams({
+    content: params.content,
+    sortBy: params.sortBy,
+    page: String(page),
+  });
+  if (params.preset !== "none") query.set("filter", params.preset);
+  if (params.withGenres) query.set("genres", params.withGenres);
+  if (params.originalLanguage) query.set("originalLanguage", params.originalLanguage);
+  if (params.originCountry) query.set("originCountry", params.originCountry);
+  if (params.keywords) query.set("keywords", params.keywords);
+  if (params.withoutKeywords) query.set("excludeKeywords", params.withoutKeywords);
   return `${MOBILE_API_PREFIX}/discover?${query.toString()}`;
+}
+
+export function buildTitleLogosEndpoint(mediaType: MediaType, id: number): string {
+  const query = new URLSearchParams({ mediaType, id: String(id) });
+  return `${MOBILE_API_PREFIX}/title-logos?${query.toString()}`;
+}
+
+export function buildCollectionEndpoint(collectionId: number): string {
+  const query = new URLSearchParams({ collectionId: String(collectionId) });
+  return `${MOBILE_API_PREFIX}/collection?${query.toString()}`;
 }
 
 export function buildGenresEndpoint(content: MediaType): string {
@@ -565,11 +797,31 @@ export const episodeGroupCacheKey = ({ groupId }: EpisodeGroupParams): string =>
   `episode-group:${groupId}`;
 export const discoverCacheKey = ({
   content,
+  preset,
   withGenres,
   sortBy,
   page,
+  originalLanguage,
+  originCountry,
+  keywords,
+  withoutKeywords,
 }: DiscoverParams): string =>
-  `discover:${content}:${withGenres || "all"}:${sortBy}:${page}`;
+  [
+    "discover",
+    content,
+    preset,
+    withGenres || "all",
+    sortBy,
+    page,
+    originalLanguage || "any",
+    originCountry || "any",
+    keywords || "none",
+    withoutKeywords || "none",
+  ].join(":");
+export const titleLogoCacheKey = ({ mediaType, id }: TitleLogoParams): string =>
+  `title-logos:${mediaType}:${id}`;
+export const collectionCacheKey = ({ collectionId }: CollectionParams): string =>
+  `collection:${collectionId}`;
 export const genresCacheKey = ({ content }: GenresParams): string => `genres:${content}`;
 export const findCacheKey = ({ imdbId, mediaType }: FindParams): string =>
   `find:${imdbId}:${mediaType}`;

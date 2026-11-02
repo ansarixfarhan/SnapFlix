@@ -6,7 +6,7 @@
  * metadata objects; playback remains the app's existing responsibility.
  */
 
-import type { MobileDiscoverSortBy } from "./constants";
+import type { MobileDiscoverPreset, MobileDiscoverSortBy } from "./constants";
 
 export type MediaType = "movie" | "tv";
 export type MobileSearchType = MediaType | "multi";
@@ -39,6 +39,10 @@ export type MobileImage = {
   aspectRatio: number;
   voteAverage: number;
   language: string;
+};
+
+export type MobileLogo = MobileImage & {
+  isSvg: boolean;
 };
 
 export type MobileVideo = {
@@ -82,6 +86,55 @@ export type MobileExternalIds = {
   facebookId: string;
   instagramId: string;
   twitterId: string;
+};
+
+export type MobileTitleLogoResponse = {
+  mediaType: MediaType;
+  id: number;
+  endpoint: string;
+  includeImageLanguage: string;
+  logos: MobileLogo[];
+  titleLogo: MobileLogo | null;
+  titleLogoPath: string | null;
+  title_logo_path: string | null;
+};
+
+export type MobileReview = {
+  id: string;
+  author: string;
+  authorUsername: string;
+  avatarPath: string;
+  rating: number | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+};
+
+export type MobileCertification = {
+  country: string;
+  certification: string;
+  preferred: boolean;
+};
+
+export type MobileCertificationInfo = {
+  certification: string | null;
+  certificationCountry: string | null;
+  certifications: MobileCertification[];
+};
+
+export type MobileCollectionSummary = {
+  id: number;
+  name: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  endpoint: string;
+};
+
+export type MobileCollectionResponse = MobileCollectionSummary & {
+  overview: string;
+  parts: MobileCard[];
+  totalParts: number;
 };
 
 export type MobileCard = {
@@ -157,15 +210,35 @@ export type MobileGenreListResponse = {
   tmdb: { genres: MobileGenre[] };
 };
 
+export type MobileDiscoverFilters = {
+  preset: MobileDiscoverPreset;
+  genres: number[];
+  originalLanguage: string | null;
+  originCountry: string | null;
+  keywords: number[];
+  withoutKeywords: number[];
+};
+
 export type MobileDiscoverResponse = MobileListPage & {
   content: MediaType;
   mediaType: MediaType;
   media_type: MediaType;
+  preset: MobileDiscoverPreset;
+  filter: MobileDiscoverPreset;
   genres: number[];
   genre_ids: number[];
   with_genres: string;
   sortBy: MobileDiscoverSortBy;
   sort_by: MobileDiscoverSortBy;
+  originalLanguage: string | null;
+  with_original_language: string | null;
+  originCountry: string | null;
+  with_origin_country: string | null;
+  keywords: string;
+  with_keywords: string;
+  withoutKeywords: string;
+  without_keywords: string;
+  filters: MobileDiscoverFilters;
   total_pages: number;
   total_results: number;
   nextPage: number | null;
@@ -253,6 +326,7 @@ export type MobileCredits = {
 export type MobileImages = {
   backdrops: MobileImage[];
   posters: MobileImage[];
+  logos: MobileLogo[];
 };
 
 export type MobileDetails = {
@@ -281,6 +355,16 @@ export type MobileDetails = {
   recommendations: MobileCard[];
   similar: MobileCard[];
   externalIds: MobileExternalIds;
+  titleLogo: MobileLogo | null;
+  titleLogoPath: string | null;
+  reviews: MobileReview[];
+  reviewCount: number;
+  certification: string | null;
+  certificationCountry: string | null;
+  certifications: MobileCertification[];
+  belongsToCollection: MobileCollectionSummary | null;
+  collection: MobileCollectionSummary | null;
+  belongs_to_collection: MobileCollectionSummary | null;
   movie?: {
     budget: number;
     revenue: number;

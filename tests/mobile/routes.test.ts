@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
+import { GET as collectionGET } from "../../src/app/api/mobile/v1/collection/route";
+import { GET as collectionsAliasGET } from "../../src/app/api/mobile/v1/collections/route";
 import { GET as detailsGET } from "../../src/app/api/mobile/v1/details/route";
 import { GET as discoverGET } from "../../src/app/api/mobile/v1/discover/route";
 import { GET as episodeGroupGET } from "../../src/app/api/mobile/v1/episode-groups/route";
@@ -10,8 +12,10 @@ import { GET as findPathGET } from "../../src/app/api/mobile/v1/find/[imdbId]/ro
 import { GET as genresGET } from "../../src/app/api/mobile/v1/genres/route";
 import { GET as homeGET } from "../../src/app/api/mobile/v1/home/route";
 import { GET as listGET } from "../../src/app/api/mobile/v1/list/route";
+import { GET as logosAliasGET } from "../../src/app/api/mobile/v1/logos/route";
 import { GET as lookupGET } from "../../src/app/api/mobile/v1/lookup/route";
 import { GET as searchGET } from "../../src/app/api/mobile/v1/search/route";
+import { GET as titleLogosGET } from "../../src/app/api/mobile/v1/title-logos/route";
 import { mobileCache } from "../../src/lib/mobile/cache";
 import { mobileRateLimiter } from "../../src/lib/mobile/rate-limit";
 
@@ -639,4 +643,229 @@ test("IMDb lookup supports query, alias and path-style compatibility routes", as
   );
   assert.equal(pathAlias.status, 200);
   assert.equal((await pathAlias.json()).data.imdbId, "tt7654321");
+});
+
+test("movie details include Story logos, reviews, certification and collection summary", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/movie/77");
+    const append = url.searchParams.get("append_to_response") ?? "";
+    assert.match(append, /reviews/);
+    assert.match(append, /release_dates/);
+    assert.equal(url.searchParams.get("include_image_language"), "en,null");
+    return jsonResponse({
+      id: 77,
+      title: "Story Movie",
+      original_title: "Story Movie",
+      overview: "A movie in a collection.",
+      release_date: "2020-01-01",
+      poster_path: "/poster.jpg",
+      backdrop_path: "/backdrop.jpg",
+      vote_average: 7.9,
+      genres: [{ id: 18, name: "Drama" }],
+      credits: { cast: [], crew: [] },
+      videos: { results: [] },
+      images: {
+        backdrops: [],
+        posters: [],
+        logos: [
+          { file_path: "/en.svg", iso_639_1: "en", width: 500, height: 200 },
+          { file_path: "/en.png", iso_639_1: "en", width: 500, height: 200 },
+          { file_path: "/null.png", iso_639_1: null, width: 400, height: 160 },
+        ],
+      },
+      keywords: { results: [] },
+      recommendations: { results: [] },
+      similar: { results: [] },
+      external_ids: { imdb_id: "tt0077" },
+      reviews: {
+        results: [
+          {
+            id: "review-1",
+            author: "Reviewer",
+            content: "Excellent",
+            created_at: "2021-01-01T00:00:00.000Z",
+            updated_at: "2021-01-02T00:00:00.000Z",
+            url: "https://www.themoviedb.org/review/review-1",
+            author_details: {
+              name: "Reviewer",
+              username: "reviewer",
+              avatar_path: "/avatar.jpg",
+              rating: 8,
+            },
+          },
+        ],
+      },
+      release_dates: {
+        results: [
+          { iso_3166_1: "US", release_dates: [{ certification: "PG-13" }] },
+          { iso_3166_1: "IN", release_dates: [{ certification: "U/A 16+" }] },
+        ],
+      },
+      belongs_to_collection: {
+        id: 10,
+        name: "Story Collection",
+        poster_path: "/collection.jpg",
+        backdrop_path: "/collection-backdrop.jpg",
+      },
+    });
+  });
+
+  const response = await detailsGET(
+    mobileRequest("/api/mobile/v1/details?mediaType=movie&id=77"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.titleLogoPath, "/en.png");
+  assert.equal(body.data.titleLogo.isSvg, false);
+  assert.equal(body.data.images.logos.length, 3);
+  assert.equal(body.data.images.logos[0].isSvg, true);
+  assert.equal(body.data.reviewCount, 1);
+  assert.equal(body.data.reviews[0].author, "Reviewer");
+  assert.equal(body.data.reviews[0].rating, 8);
+  assert.equal(body.data.certification, "U/A 16+");
+  assert.equal(body.data.certificationCountry, "IN");
+  assert.equal(body.data.certifications.length, 2);
+  assert.equal(body.data.certifications[1].preferred, true);
+  assert.equal(body.data.belongsToCollection.name, "Story Collection");
+  assert.equal(
+    body.data.belongsToCollection.endpoint,
+    "/api/mobile/v1/collection?collectionId=10",
+  );
+  assert.equal(body.data.collection.name, "Story Collection");
+  assert.equal(body.data.belongs_to_collection.name, "Story Collection");
+});
+
+test("title-logos endpoint selects an English PNG and supports aliases", async () => {
+  installFetch((url) => {
+    assert.match(url.pathname, /^\/3\/(movie|tv)\/\d+\/images$/);
+    assert.equal(url.searchParams.get("include_image_language"), "en,null");
+    return jsonResponse({
+      logos: [
+        { file_path: "/en.svg", iso_639_1: "en", width: 500, height: 200 },
+        { file_path: "/en.png", iso_639_1: "en", width: 500, height: 200 },
+        { file_path: "/jp.png", iso_639_1: "ja", width: 400, height: 160 },
+      ],
+    });
+  });
+
+  const response = await titleLogosGET(
+    mobileRequest("/api/mobile/v1/title-logos?mediaType=tv&id=55"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.mediaType, "tv");
+  assert.equal(body.data.id, 55);
+  assert.equal(body.data.titleLogoPath, "/en.png");
+  assert.equal(body.data.title_logo_path, "/en.png");
+  assert.equal(body.data.titleLogo.isSvg, false);
+  assert.equal(body.data.logos[0].isSvg, true);
+  assert.match(body.data.endpoint, /\/api\/mobile\/v1\/title-logos\?/);
+
+  const alias = await logosAliasGET(
+    mobileRequest("/api/mobile/v1/logos?type=movie&id=77"),
+  );
+  assert.equal(alias.status, 200);
+});
+
+test("collection endpoint returns normalized movie parts and supports aliases", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/collection/10");
+    return jsonResponse({
+      id: 10,
+      name: "Story Collection",
+      overview: "Two connected films.",
+      poster_path: "/collection.jpg",
+      backdrop_path: "/collection-backdrop.jpg",
+      parts: [
+        { id: 77, title: "Part One", poster_path: "/one.jpg", release_date: "2020-01-01" },
+        { id: 78, title: "Part Two", poster_path: "/two.jpg", release_date: "2022-01-01" },
+      ],
+    });
+  });
+
+  const response = await collectionGET(
+    mobileRequest("/api/mobile/v1/collection?collectionId=10"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.name, "Story Collection");
+  assert.equal(body.data.totalParts, 2);
+  assert.equal(body.data.parts[0].mediaType, "movie");
+  assert.equal(body.data.parts[0].posterPath, "/one.jpg");
+  assert.equal(
+    body.data.endpoint,
+    "/api/mobile/v1/collection?collectionId=10",
+  );
+
+  const alias = await collectionsAliasGET(
+    mobileRequest("/api/mobile/v1/collections?id=10"),
+  );
+  assert.equal(alias.status, 200);
+  assert.equal(fetchCalls.length, 1);
+});
+
+test("anime Discover preset applies fixed TMDB filters", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/discover/tv");
+    assert.equal(url.searchParams.get("with_genres"), "16");
+    assert.equal(url.searchParams.get("with_original_language"), "ja");
+    assert.equal(url.searchParams.get("with_origin_country"), "JP");
+    assert.equal(url.searchParams.get("with_keywords"), "210024");
+    assert.equal(url.searchParams.get("without_keywords"), "158718|155477");
+    assert.equal(url.searchParams.get("include_adult"), "false");
+    return jsonResponse({
+      page: 1,
+      total_pages: 1,
+      total_results: 1,
+      results: [{ id: 91, name: "Anime Show", first_air_date: "2024-01-01" }],
+    });
+  });
+
+  const response = await discoverGET(
+    mobileRequest("/api/mobile/v1/discover?type=anime"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.content, "tv");
+  assert.equal(body.data.preset, "anime");
+  assert.equal(body.data.filter, "anime");
+  assert.equal(body.data.with_original_language, "ja");
+  assert.equal(body.data.with_origin_country, "JP");
+  assert.equal(body.data.with_keywords, "210024");
+  assert.deepEqual(body.data.filters.keywords, [210024]);
+  assert.deepEqual(body.data.filters.withoutKeywords, [158718, 155477]);
+  assert.equal(body.data.results[0].mediaType, "tv");
+});
+
+test("Korean Discover preset keeps explicit movie content and genre filters", async () => {
+  installFetch((url) => {
+    assert.equal(url.pathname, "/3/discover/movie");
+    assert.equal(url.searchParams.get("with_genres"), "28");
+    assert.equal(url.searchParams.get("with_original_language"), "ko");
+    assert.equal(url.searchParams.get("with_origin_country"), "KR");
+    assert.equal(url.searchParams.has("with_keywords"), false);
+    return jsonResponse({
+      page: 1,
+      total_pages: 1,
+      total_results: 1,
+      results: [{ id: 92, title: "Korean Action", release_date: "2023-01-01" }],
+    });
+  });
+
+  const response = await discoverGET(
+    mobileRequest("/api/mobile/v1/discover?content=movie&preset=korean&genres=28"),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.data.content, "movie");
+  assert.equal(body.data.preset, "korean");
+  assert.equal(body.data.originalLanguage, "ko");
+  assert.equal(body.data.with_origin_country, "KR");
+  assert.deepEqual(body.data.filters.genres, [28]);
+  assert.equal(body.data.results[0].mediaType, "movie");
 });

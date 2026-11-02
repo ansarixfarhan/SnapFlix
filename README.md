@@ -156,12 +156,15 @@ npm run deploy
 
 The mobile app has its own versioned TMDB metadata API under
 `/api/mobile/v1/`: home, list, search, details, episodes, episode groups,
-genre Discover, genre lists and IMDb-to-TMDB lookup. It uses only the
-server-side `TMDB_ACCESS_TOKEN`, fixed TMDB paths, strict input validation,
-layered caching and request-rate protection. Home returns partial results if a
-single row fails, and the optional app-key gate disables public CDN caching so
-it cannot be bypassed by a cache hit. The existing provider/stream resolver and
-website playback are unchanged.
+genre Discover, genre lists, IMDb-to-TMDB lookup, title logos and movie
+collection details. Details include Story-ready reviews, certification and
+collection summaries; Discover supports anime/Korean presets and explicit
+language, country and keyword filters. It uses only the server-side
+`TMDB_ACCESS_TOKEN`, fixed TMDB paths, strict input validation, layered caching
+and request-rate protection. Home returns partial results if a single row fails,
+and the optional app-key gate disables public CDN caching so it cannot be
+bypassed by a cache hit. The existing provider/stream resolver and website
+playback are unchanged.
 
 Endpoint contracts, Cloudflare secret/cache/WAF setup and targeted test
 commands are documented in [docs/mobile-api.md](docs/mobile-api.md).

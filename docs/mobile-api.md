@@ -66,6 +66,8 @@ Errors use this shape:
 | `GET /discover` | Genre-aware TMDB Discover |
 | `GET /genres` | Movie/TV genre filters |
 | `GET /find` | IMDb-to-TMDB lookup |
+| `GET /title-logos` | Title/brand logos for a movie or TV id |
+| `GET /collection` | Full TMDB movie collection details |
 
 ### 1. Home
 
@@ -152,6 +154,22 @@ recommendations, similar titles and external IDs. TV details also include
 seasons (with `episodesEndpoint`), episode-group summaries and the recommended
 episode-group endpoint.
 
+Additive Story fields are also included:
+
+- `images.logos`, `titleLogo`, `titleLogoPath`: available title logos and the
+  preferred English PNG logo (falls back to a language-free/other PNG, then SVG).
+- `reviews`, `reviewCount`: up to 5 normalized TMDB reviews.
+- `certification`, `certificationCountry`, `certifications`: preferred
+  IN → US → GB → any rating from movie `release_dates` or TV
+  `content_ratings`, plus all available country ratings.
+- `belongsToCollection`, `collection`, `belongs_to_collection`: a normalized
+  summary with `id`, `name`, poster/backdrop paths and `endpoint` pointing to
+  the full collection endpoint. This is `null` for titles outside a collection.
+
+The `/details` request internally appends `images`, `reviews`, and either
+`release_dates` (movies) or `content_ratings` (TV), and asks TMDB for
+`include_image_language=en,null`. Clients do not pass these options.
+
 ### 5. Episodes for one season
 
 ```http
@@ -188,14 +206,41 @@ GET /api/mobile/v1/discover?content=movie&genres=28,12&sortBy=popularity.desc&pa
 
 | Parameter | Required | Values |
 | --- | --- | --- |
-| `content`, `mediaType` or `type` | no, default `movie` | `movie`, `tv` |
+| `content`, `mediaType` or `type` | no | `movie`, `tv`; default depends on filter |
 | `genres`, `with_genres` or `genre` | no | up to 10 numeric TMDB genre IDs, comma or pipe separated |
 | `sortBy`, `sort_by` or `sort` | no, default `popularity.desc` | fixed TMDB sort allowlist |
+| `preset`, `filter`, `category` or preset-style `type` | no, default `none` | `none`, `anime`, `korean`, `kdrama` |
+| `originalLanguage` or `with_original_language` | no | `ja`, `ko`, `en`, `zh`, `hi`, `es`, `fr`, `de`, `it`, `pt`, `th`, `id` |
+| `originCountry` or `with_origin_country` | no | up to 5 allowlisted country codes, e.g. `JP`, `KR`, `US` |
+| `keywords` or `with_keywords` | no | up to 10 numeric TMDB keyword IDs |
+| `excludeKeywords` or `without_keywords` | no | up to 10 numeric TMDB keyword IDs |
 | `page` | no, default `1` | `1`–`500` |
 
 `include_adult=false` is always forced. The response includes both normalized
 camelCase fields and TMDB-compatible aliases such as `media_type`,
-`with_genres`, `genre_ids`, `sort_by`, `total_pages` and `total_results`.
+`with_genres`, `genre_ids`, `sort_by`, `with_original_language`,
+`with_origin_country`, `with_keywords`, `without_keywords`, `total_pages` and
+`total_results`. A `filters` object exposes the resolved numeric arrays.
+
+### Anime and Korean filters
+
+Presets are additive and do not break existing Discover calls. Explicit
+language, country, genre or keyword values always override preset defaults.
+
+| Preset | Default `content` | Fixed TMDB filters |
+| --- | --- | --- |
+| `anime` | `tv` | `with_genres=16`, `with_original_language=ja`, `with_origin_country=JP`, `with_keywords=210024`, `without_keywords=158718\|155477` |
+| `korean` | `tv` | `with_original_language=ko`, `with_origin_country=KR` |
+| `kdrama` | `tv` | `with_genres=18`, `with_original_language=ko`, `with_origin_country=KR` |
+
+Examples:
+
+```http
+GET /api/mobile/v1/discover?type=anime&page=1
+GET /api/mobile/v1/discover?content=tv&filter=kdrama&sortBy=vote_average.desc
+GET /api/mobile/v1/discover?content=movie&preset=korean&genres=28
+GET /api/mobile/v1/discover?with_original_language=ja&with_origin_country=JP&with_keywords=210024
+```
 
 Compatibility path alias: `GET /api/mobile/v1/tmdb/discover` accepts the same
 parameters.
@@ -245,13 +290,50 @@ Compatibility aliases:
 - `GET /api/mobile/v1/tmdb/find/{imdbId}`
 - `GET /api/mobile/v1/imdb/{imdbId}`
 
+### 10. Title logos
+
+```http
+GET /api/mobile/v1/title-logos?mediaType=movie&id=12345
+```
+
+| Parameter | Required | Values |
+| --- | --- | --- |
+| `mediaType`, `content` or `type` | yes | `movie`, `tv` |
+| `id` | yes | positive TMDB id |
+
+Returns `logos`, a preferred `titleLogo` object, and `titleLogoPath`. Logo
+selection matches the website: prefer an English PNG, then a language-free PNG,
+then another PNG, then an SVG. Each logo includes `isSvg` and the usual image
+dimensions/language fields. TMDB is called with
+`include_image_language=en,null`.
+
+Compatibility aliases: `/logos`, `/title-logo`, `/tmdb/title-logos`.
+
+### 11. Movie collection details
+
+```http
+GET /api/mobile/v1/collection?collectionId=645
+```
+
+| Parameter | Required | Values |
+| --- | --- | --- |
+| `collectionId`, `collection_id` or `id` | yes | positive TMDB collection id |
+
+Returns collection name, overview, poster/backdrop paths, `parts` as normalized
+movie cards and `totalParts`. Use the `collection.endpoint` returned by
+`/details` to call this endpoint directly.
+
+Compatibility aliases: `/collections`, `/movie-collection`,
+`/tmdb/collection`.
+
 ## Validation and misuse protection
 
 - Unknown or duplicate query parameters are rejected with `400`; repeated
-  `genres`/`with_genres`/`genre` values are allowed for compatibility.
+  `genres`/`with_genres`/`genre` and keyword-list values are allowed for
+  compatibility.
 - Media types, collection names, pages, IDs, seasons, group IDs, genre IDs,
-  sort values and IMDb IDs are checked against fixed allowlists and numeric
-  bounds.
+  Discover presets, original languages, origin countries, keyword IDs, sort
+  values and IMDb IDs are checked against fixed allowlists and numeric bounds.
 - Search text is trimmed, normalized, control-character checked and capped at
   120 characters.
 - TMDB URLs and query keys are built internally; clients cannot pass arbitrary
@@ -283,6 +365,8 @@ Compatibility aliases:
 | `/discover` | 600 s |
 | `/genres` | 86,400 s |
 | `/find` | 86,400 s |
+| `/title-logos` | 86,400 s |
+| `/collection` | 86,400 s |
 
 For public/ungated deployments, three layers are used:
 

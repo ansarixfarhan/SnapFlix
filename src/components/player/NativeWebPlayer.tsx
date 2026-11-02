@@ -2057,10 +2057,6 @@ export default function NativeWebPlayer({
           if (episode) params.append('episode', String(episode));
         }
 
-        if (activeLanguage) {
-          params.append('lang', activeLanguage.toLowerCase());
-        }
-
         const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
         const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 

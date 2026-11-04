@@ -579,9 +579,10 @@ export default function NativeWebPlayer({
   const [selectedStream, setSelectedStream] = useState<StreamItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Active Server Provider ('vidly' | 'vidy') & Server Switcher States
-  const [activeServerProvider, setActiveServerProvider] = useState<'vidly' | 'vidy'>('vidly');
+  // Active Server Provider ('vidly' | 'vidbolt' | 'vidy') & Server Switcher States
+  const [activeServerProvider, setActiveServerProvider] = useState<'vidly' | 'vidbolt' | 'vidy'>('vidly');
   const [vidlyResults, setVidlyResults] = useState<ProviderResult[]>([]);
+  const [vidboltResults, setVidboltResults] = useState<ProviderResult[]>([]);
   const [vidyResults, setVidyResults] = useState<ProviderResult[]>([]);
   const [showServerQualityMenu, setShowServerQualityMenu] = useState<boolean>(false);
   const serverQualityMenuRef = useRef<HTMLDivElement>(null);
@@ -1583,19 +1584,20 @@ export default function NativeWebPlayer({
   interface UniqueServerOption {
     id: string;
     name: string;
-    provider: 'vidly' | 'vidy';
+    provider: 'vidly' | 'vidbolt' | 'vidy';
     streams: StreamItem[];
   }
 
-  // Deduplicated servers list (each server appears exactly once)
+  // Deduplicated servers list (Server 1: Vidly, Server 2: VidBolt, Server 3: Vidy)
   const availableServers = useMemo<UniqueServerOption[]>(() => {
     const list: UniqueServerOption[] = [];
     const seen = new Set<string>();
 
+    // Server 1: Vidly
     vidlyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (!isPlayableStream(s)) return;
-        const name = s.server || 'Vidly Edge';
+        const name = s.server || 'Server 1 (Fast Cloud)';
         const key = `vidly-${name}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -1611,10 +1613,31 @@ export default function NativeWebPlayer({
       });
     });
 
+    // Server 2: VidBolt
+    vidboltResults.forEach((prov) => {
+      prov.streams?.forEach((s) => {
+        if (!isPlayableStream(s)) return;
+        const name = s.server || 'Server 2 (VidBolt Multi-Audio)';
+        const key = `vidbolt-${name}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push({
+            id: key,
+            name,
+            provider: 'vidbolt',
+            streams: [{ ...s, providerName: prov.providerName }],
+          });
+        } else {
+          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
+        }
+      });
+    });
+
+    // Server 3: Vidy
     vidyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (!isPlayableStream(s)) return;
-        const name = s.server || 'Vidy Dedicated Node';
+        const name = s.server || 'Server 3 (Vidy Node)';
         const key = `vidy-${name}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -1631,10 +1654,10 @@ export default function NativeWebPlayer({
     });
 
     return list;
-  }, [vidlyResults, vidyResults]);
+  }, [vidlyResults, vidboltResults, vidyResults]);
 
-  // Handle Manual Server Switching between Vidly and Vidy
-  const handleSelectServer = (targetProvider: 'vidly' | 'vidy', stream: StreamItem) => {
+  // Handle Manual Server Switching between Vidly, VidBolt, and Vidy
+  const handleSelectServer = (targetProvider: 'vidly' | 'vidbolt' | 'vidy', stream: StreamItem) => {
     if (stream.link === selectedStream?.link) {
       setShowServerQualityMenu(false);
       setShowMobileDrawer(false);
@@ -1644,7 +1667,12 @@ export default function NativeWebPlayer({
     resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
     setActiveServerProvider(targetProvider);
 
-    const results = targetProvider === 'vidly' ? vidlyResults : vidyResults;
+    const results =
+      targetProvider === 'vidly'
+        ? vidlyResults
+        : targetProvider === 'vidbolt'
+        ? vidboltResults
+        : vidyResults;
     if (results && results.length > 0) {
       setProviderResults(results);
     }
@@ -1868,7 +1896,7 @@ export default function NativeWebPlayer({
     }
 
     // 2. From all other streams across providerResults, vidlyResults, and vidyResults
-    const allProviders = [...providerResults, ...vidlyResults, ...vidyResults];
+    const allProviders = [...providerResults, ...vidlyResults, ...vidboltResults, ...vidyResults];
     allProviders.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (s.subtitles && Array.isArray(s.subtitles)) {
@@ -1917,7 +1945,7 @@ export default function NativeWebPlayer({
     uploadedSubtitles.forEach(s => list.push(s));
 
     return list;
-  }, [selectedStream, providerResults, vidlyResults, vidyResults, hlsSubtitles, autoSubtitles, uploadedSubtitles]);
+  }, [selectedStream, providerResults, vidlyResults, vidboltResults, vidyResults, hlsSubtitles, autoSubtitles, uploadedSubtitles]);
 
   // Handle Subtitle Selection
   const handleSelectSubtitle = (subId: string) => {
@@ -2219,21 +2247,31 @@ export default function NativeWebPlayer({
         }
 
         const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
+        const vidboltApiBase = (process.env.NEXT_PUBLIC_VIDBOLT_URL || 'https://vidbolt.snapflix.indevs.in').replace(/\/$/, '');
         const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
         const primaryUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
+        const vidboltUrl = `${vidboltApiBase}/api/provider/resolve?${params.toString()}`;
         const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
 
         // Reset standby fallback and results for this new media load
         standbyFallbackRef.current = null;
         setVidlyResults([]);
+        setVidboltResults([]);
         setVidyResults([]);
 
-        // Parallel initiation: Fetch Primary (Vidly) and Standby (Vidy) simultaneously
+        // Parallel initiation: Fetch Primary (Vidly), Server 2 (VidBolt), and Server 3 (Vidy) simultaneously
         const primaryPromise = fetch(primaryUrl)
           .then(async (r) => (r.ok ? r.json() : null))
           .catch((err) => {
             console.warn('[Player] Vidly resolve network error:', err);
+            return null;
+          });
+
+        const vidboltPromise = fetch(vidboltUrl)
+          .then(async (r) => (r.ok ? r.json() : null))
+          .catch((err) => {
+            console.warn('[Player] VidBolt resolve network error:', err);
             return null;
           });
 
@@ -2244,7 +2282,14 @@ export default function NativeWebPlayer({
             return null;
           });
 
-        // Pre-warm Vidy standby in memory (passive background, does NOT touch active UI or player state)
+        // Pre-warm VidBolt & Vidy in memory (passive background)
+        vidboltPromise.then((vbData) => {
+          if (active && vbData?.success && Array.isArray(vbData.results) && vbData.results.length > 0) {
+            setVidboltResults(vbData.results);
+            console.log('[Player] Server 2 (VidBolt) pre-warmed & ready in memory');
+          }
+        });
+
         secPromise.then((secData) => {
           if (active && secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
             setVidyResults(secData.results);
@@ -2256,7 +2301,7 @@ export default function NativeWebPlayer({
         // 1. Await Vidly (Primary Edge)
         const primaryData = await primaryPromise;
         let chosenResults: any[] = [];
-        let chosenProvider: 'vidly' | 'vidy' = 'vidly';
+        let chosenProvider: 'vidly' | 'vidbolt' | 'vidy' = 'vidly';
 
         const hasValidPrimary =
           primaryData?.success &&
@@ -2269,12 +2314,20 @@ export default function NativeWebPlayer({
           setVidlyResults(primaryData.results);
           chosenProvider = 'vidly';
         } else {
-          console.warn('[Player] Vidly returned no playable streams. Falling back to Vidy immediately...');
-          const secData = await secPromise;
-          if (secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
-            chosenResults = secData.results;
-            setVidyResults(secData.results);
-            chosenProvider = 'vidy';
+          console.warn('[Player] Vidly returned no playable streams. Trying Server 2 (VidBolt)...');
+          const vbData = await vidboltPromise;
+          if (vbData?.success && Array.isArray(vbData.results) && vbData.results.length > 0) {
+            chosenResults = vbData.results;
+            setVidboltResults(vbData.results);
+            chosenProvider = 'vidbolt';
+          } else {
+            console.warn('[Player] VidBolt returned no streams. Falling back to Server 3 (Vidy)...');
+            const secData = await secPromise;
+            if (secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
+              chosenResults = secData.results;
+              setVidyResults(secData.results);
+              chosenProvider = 'vidy';
+            }
           }
         }
 

@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const PRIMARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
+const VIDBOLT_BACKEND = (process.env.NEXT_PUBLIC_VIDBOLT_URL || 'https://vidbolt.snapflix.indevs.in').replace(/\/$/, '');
+const CINEVERSE_BACKEND = (process.env.NEXT_PUBLIC_CINEVERSE_URL || 'https://cineverse.snapflix.indevs.in').replace(/\/$/, '');
 const SECONDARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
   try {
-    const [primarySettled, secondarySettled] = await Promise.allSettled([
+    const [primarySettled, vidboltSettled, cineverseSettled, secondarySettled] = await Promise.allSettled([
       fetch(`${PRIMARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
+        headers: { Accept: 'application/json' },
+      }).then(async (r) => (r.ok ? r.json() : null)),
+      fetch(`${VIDBOLT_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
+        headers: { Accept: 'application/json' },
+      }).then(async (r) => (r.ok ? r.json() : null)),
+      fetch(`${CINEVERSE_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
         headers: { Accept: 'application/json' },
       }).then(async (r) => (r.ok ? r.json() : null)),
       fetch(`${SECONDARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
@@ -17,14 +25,20 @@ export async function GET(request: NextRequest) {
     ]);
 
     const primaryData = primarySettled.status === 'fulfilled' ? primarySettled.value : null;
+    const vidboltData = vidboltSettled.status === 'fulfilled' ? vidboltSettled.value : null;
+    const cineverseData = cineverseSettled.status === 'fulfilled' ? cineverseSettled.value : null;
     const secondaryData = secondarySettled.status === 'fulfilled' ? secondarySettled.value : null;
 
     const combinedResults = [
       ...(primaryData?.results || []),
+      ...(vidboltData?.results || []),
+      ...(cineverseData?.results || []),
       ...(secondaryData?.results || []),
     ];
     const combinedStreams = [
       ...(primaryData?.streams || []),
+      ...(vidboltData?.streams || []),
+      ...(cineverseData?.streams || []),
       ...(secondaryData?.streams || []),
     ];
 
@@ -32,11 +46,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          query: primaryData?.query || secondaryData?.query || {},
-          media: primaryData?.media || secondaryData?.media || {},
-          tier: 'hybrid',
+          query: primaryData?.query || vidboltData?.query || cineverseData?.query || secondaryData?.query || {},
+          media: primaryData?.media || vidboltData?.media || cineverseData?.media || secondaryData?.media || {},
+          tier: 'hybrid-4tier',
           providersResponded: [
             ...(primaryData?.providersResponded || []),
+            ...(vidboltData?.providersResponded || []),
+            ...(cineverseData?.providersResponded || []),
             ...(secondaryData?.providersResponded || []),
           ],
           totalStreams: combinedStreams.length,

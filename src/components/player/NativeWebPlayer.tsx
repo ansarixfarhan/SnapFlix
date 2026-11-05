@@ -1415,14 +1415,17 @@ export default function NativeWebPlayer({
     return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, [showNextEpPreview]);
 
-  // Available spoken languages across all servers (e.g. English, Hindi, Japanese)
+  // Available spoken languages scoped strictly to the current active server
   const availableLanguages = useMemo(() => {
     const counts = new Map<string, number>();
+    // Deduplicate streams for current active server by link
+    const seenLinks = new Set<string>();
     providerResults.forEach((prov) => {
-      prov.streams.forEach((s) => {
-        // Only count playable streams (m3u8 or mp4, not raw mkv)
-        const isPlayable = isPlayableStream(s);
-        if (!isPlayable) return;
+      prov.streams?.forEach((s) => {
+        if (!isPlayableStream(s)) return;
+        const linkKey = s.link || String(prov.providerName);
+        if (seenLinks.has(linkKey)) return;
+        seenLinks.add(linkKey);
 
         const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
         langs.forEach((lang) => {
@@ -1431,19 +1434,24 @@ export default function NativeWebPlayer({
       });
     });
 
-    // Also include live HLS internal audio tracks if available (only if they represent real languages)
-    if (hlsAudioTracks.length > 0) {
-      hlsAudioTracks.forEach((track) => {
-        const rawName = (track.name || track.lang || '').trim();
-        const parsed = parseWordToLanguage(rawName);
+    // Also include live HLS internal audio tracks if available for current stream
+    const effectiveHlsTracks = (hlsAudioTracks.length > 0 ? hlsAudioTracks : (hlsRef.current?.audioTracks || []));
+    if (effectiveHlsTracks.length > 0) {
+      effectiveHlsTracks.forEach((track: any) => {
+        const namePart = (track.name || '').trim();
+        const langPart = (track.lang || '').trim();
+        const parsed = parseWordToLanguage(namePart) || parseWordToLanguage(langPart);
         if (parsed && !counts.has(parsed)) {
           counts.set(parsed, 1);
-        } else if (!parsed && rawName.length > 1) {
-          const lower = rawName.toLowerCase();
-          if (!GENERIC_AUDIO_LABELS.has(lower) && !lower.startsWith('audio') && !lower.startsWith('track')) {
-            const titleCased = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
-            if (!counts.has(titleCased)) {
-              counts.set(titleCased, 1);
+        } else if (!parsed) {
+          const raw = namePart || langPart;
+          if (raw.length > 1) {
+            const lower = raw.toLowerCase();
+            if (!GENERIC_AUDIO_LABELS.has(lower) && !lower.startsWith('audio') && !lower.startsWith('track')) {
+              const titleCased = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+              if (!counts.has(titleCased)) {
+                counts.set(titleCased, 1);
+              }
             }
           }
         }
@@ -1464,8 +1472,22 @@ export default function NativeWebPlayer({
   // Keep activeLanguage in sync with current stream
   useEffect(() => {
     if (!selectedStream) return;
+    const currentProv =
+      providerResults.find((p) => p.providerName === selectedStream.providerName) ||
+      vidlyResults.find((p) => p.providerName === selectedStream.providerName) ||
+      vidboltResults.find((p) => p.providerName === selectedStream.providerName) ||
+      vidyResults.find((p) => p.providerName === selectedStream.providerName);
+
+    const streamLangs = getStreamAudioLanguages(selectedStream, currentProv?.infoTitle, originalLanguage);
+
+    // If stream has explicit dedicated language (e.g. Hindi stream), keep activeLanguage aligned with it!
+    if (streamLangs.length > 0 && !streamLangs.includes('English') && streamLangs.includes(activeLanguage)) {
+      return;
+    }
+
     if (isHlsStream(selectedStream)) {
-      if (hlsAudioTracks.length > 0) {
+      // Only check internal tracks if stream itself has multiple internal audio tracks
+      if (hlsAudioTracks.length > 1) {
         const hasTrack = hlsAudioTracks.some((t: any) => {
           const tLang = (t.lang || '').toLowerCase();
           const tName = (t.name || '').toLowerCase();
@@ -1483,31 +1505,31 @@ export default function NativeWebPlayer({
       return;
     }
 
-    const currentProv = providerResults.find((p) => p.providerName === selectedStream.providerName);
-    const langs = getStreamAudioLanguages(selectedStream, currentProv?.infoTitle, originalLanguage);
-    if (langs.length > 0 && !langs.includes(activeLanguage)) {
-      if (langs.includes('Hindi')) {
+    if (streamLangs.length > 0 && !streamLangs.includes(activeLanguage)) {
+      if (streamLangs.includes('Hindi')) {
         setActiveLanguage('Hindi');
       } else {
-        setActiveLanguage(langs[0]);
+        setActiveLanguage(streamLangs[0]);
       }
     }
-  }, [selectedStream, providerResults, originalLanguage, hlsAudioTracks, currentHlsAudioTrack, activeLanguage]);
+  }, [selectedStream, providerResults, vidlyResults, vidboltResults, vidyResults, originalLanguage, hlsAudioTracks, currentHlsAudioTrack, activeLanguage]);
 
   // Instant Audio Switcher Handler: switches audio immediately without redirecting to servers list
   const handleSelectLanguage = (targetLang: string) => {
     setActiveLanguage(targetLang);
 
-    // 1. Check if current playing HLS has an internal multi-track matching targetLang
+    // 1. If current playing HLS has MULTIPLE internal tracks (> 1), switch internal track directly
     if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 1) {
       const aliases = LANG_CODE_ALIASES[targetLang] || [targetLang.toLowerCase()];
       const trackIdx = hlsRef.current.audioTracks.findIndex((t: any) => {
-        const tLang = (t.lang || '').toLowerCase();
-        const tName = (t.name || '').toLowerCase();
+        const tLang = (t.lang || '').toLowerCase().trim();
+        const tName = (t.name || '').toLowerCase().trim();
+        const parsed = parseWordToLanguage(tName) || parseWordToLanguage(tLang);
         return (
+          parsed === targetLang ||
           tName === targetLang.toLowerCase() ||
           tLang === targetLang.toLowerCase() ||
-          aliases.some((a) => tLang === a || tName.includes(a))
+          aliases.some((a) => tLang === a || tName.includes(a) || tLang.includes(a))
         );
       });
       if (trackIdx !== -1) {
@@ -1521,10 +1543,16 @@ export default function NativeWebPlayer({
 
     // 2. Find best playable stream supporting targetLang across providers
     let candidateStream: StreamItem | null = null;
+    const allProvidersList = [
+      ...providerResults,
+      ...vidlyResults,
+      ...vidboltResults,
+      ...vidyResults,
+    ];
 
     // A. Search within current provider first for a stream supporting targetLang
     if (selectedStream) {
-      const currentProv = providerResults.find(
+      const currentProv = allProvidersList.find(
         (p) =>
           p.providerName === selectedStream.providerName ||
           (selectedStream.providerValue && p.providerValue === selectedStream.providerValue)
@@ -1548,7 +1576,7 @@ export default function NativeWebPlayer({
 
     // B. If current provider has no alternative stream for targetLang, search ALL providers
     if (!candidateStream) {
-      for (const prov of providerResults) {
+      for (const prov of allProvidersList) {
         const matches = prov.streams.filter((s) => {
           if (!isPlayableStream(s)) return false;
           const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
@@ -1684,17 +1712,41 @@ export default function NativeWebPlayer({
     setSelectedQuality('auto');
     setPlaybackError(null);
 
-    // If transitioning to Vidy (which has no internal HLS tracks), transition active subtitle to equivalent external track
-    if (targetProvider === 'vidy' && activeSubtitleIdRef.current && activeSubtitleIdRef.current.startsWith('hls-')) {
-      const prevSub = availableSubtitles.find(s => s.id === activeSubtitleIdRef.current);
-      const prevLang = (prevSub?.language || prevSub?.title || 'english').toLowerCase();
-      const altSub = availableSubtitles.find(s => s.uri && (
-        (s.language && s.language.toLowerCase().includes(prevLang)) ||
-        (s.title && s.title.toLowerCase().includes(prevLang))
-      )) || availableSubtitles.find(s => s.uri);
+    // Reset HLS subtitles and clean up previous server subtitles
+    setHlsSubtitles([]);
+    if (activeSubtitleIdRef.current) {
+      if (activeSubtitleIdRef.current.startsWith('hls-') || activeSubtitleIdRef.current.startsWith('prov-') || activeSubtitleIdRef.current.startsWith('provider-')) {
+        // Find if this subtitle exists in the new server streams or switch to off/external
+        const targetSubList = stream.subtitles || [];
+        const matchingSub = targetSubList.find((s) => s.uri === activeSubtitleUri);
+        if (!matchingSub) {
+          // Check if OpenSubtitles has a matching language or turn off
+          const prevLang = (activeSubtitleIdRef.current || 'english').toLowerCase();
+          const altSub = autoSubtitles.find(s => s.uri && (
+            (s.language && s.language.toLowerCase().includes(prevLang)) ||
+            (s.title && s.title.toLowerCase().includes(prevLang))
+          ));
+          if (altSub) {
+            setTimeout(() => handleSelectSubtitle(altSub.id), 250);
+          } else {
+            setActiveSubtitleId('off');
+            activeSubtitleIdRef.current = 'off';
+            setActiveSubtitleUri(null);
+            disableAllSubtitles(videoRef.current, hlsRef.current);
+          }
+        }
+      }
+    }
 
-      if (altSub) {
-        setTimeout(() => handleSelectSubtitle(altSub.id), 250);
+    // Refresh Audio Language for new server:
+    // If the new server stream doesn't match activeLanguage, align with the new stream's language
+    const currentProvForStream = results?.find(p => p.providerName === (stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : 'Vidy VPS')));
+    const streamLangs = getStreamAudioLanguages(stream, currentProvForStream?.infoTitle, originalLanguage);
+    if (streamLangs.length > 0 && !streamLangs.includes(activeLanguage)) {
+      if (streamLangs.includes('Hindi')) {
+        setActiveLanguage('Hindi');
+      } else {
+        setActiveLanguage(streamLangs[0]);
       }
     }
 
@@ -1736,6 +1788,7 @@ export default function NativeWebPlayer({
       hlsLevels.forEach((lvl) => {
         const h = lvl.height || 0;
         if (h >= 2000) discovered.add('2160p');
+        else if (h >= 1350) discovered.add('1440p');
         else if (h >= 1000) discovered.add('1080p');
         else if (h >= 700) discovered.add('720p');
         else if (h >= 450) discovered.add('480p');
@@ -1756,6 +1809,9 @@ export default function NativeWebPlayer({
 
         if (q.includes('2160') || q.includes('4k') || serverText.includes('4k') || serverText.includes('2160')) {
           discovered.add('2160p');
+        }
+        if (q.includes('1440') || serverText.includes('1440') || q.includes('2k') || serverText.includes('2k')) {
+          discovered.add('1440p');
         }
         if (q.includes('1080') || serverText.includes('1080')) {
           discovered.add('1080p');
@@ -1778,6 +1834,9 @@ export default function NativeWebPlayer({
 
     if (discovered.has('2160p')) {
       options.push({ key: '2160p', label: '4K' });
+    }
+    if (discovered.has('1440p')) {
+      options.push({ key: '1440p', label: '1440p' });
     }
     if (discovered.has('1080p') || options.length === 1) {
       options.push({ key: '1080p', label: '1080p' });
@@ -1872,21 +1931,21 @@ export default function NativeWebPlayer({
     }
   };
 
-  // Aggregated Subtitles across active provider stream + all provider streams + HLS tracks + auto OpenSubtitles + uploaded tracks
+  // Scoped Subtitles across current active provider streams + current HLS tracks + universal OpenSubtitles + uploaded tracks
   const availableSubtitles = useMemo(() => {
     const list: Array<{ id: string; title: string; language?: string; uri?: string; hlsIndex?: number; headers?: Record<string, string> }> = [];
     const seenUris = new Set<string>();
     const seenTitles = new Set<string>();
 
-    // 1. From active provider's stream
+    // 1. From active provider's currently selected stream
     if (selectedStream?.subtitles && Array.isArray(selectedStream.subtitles)) {
       selectedStream.subtitles.forEach((s, idx) => {
         const u = s.uri;
         if (u) seenUris.add(u);
-        const name = s.title || s.language || `Subtitle ${idx + 1}`;
+        const name = s.title || s.language || ("Subtitle " + (idx + 1));
         seenTitles.add(name.toLowerCase());
         list.push({
-          id: `provider-${idx}-${u || s.language}`,
+          id: "provider-" + idx + "-" + (u || s.language),
           title: name,
           language: s.language,
           uri: u,
@@ -1895,18 +1954,17 @@ export default function NativeWebPlayer({
       });
     }
 
-    // 2. From all other streams across providerResults, vidlyResults, and vidyResults
-    const allProviders = [...providerResults, ...vidlyResults, ...vidboltResults, ...vidyResults];
-    allProviders.forEach((prov) => {
+    // 2. From all streams of the CURRENT active server (providerResults only)
+    providerResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (s.subtitles && Array.isArray(s.subtitles)) {
           s.subtitles.forEach((sub, idx) => {
             if (sub.uri && !seenUris.has(sub.uri)) {
               seenUris.add(sub.uri);
-              const name = sub.title || sub.language || `Subtitle ${list.length + 1}`;
+              const name = sub.title || sub.language || ("Subtitle " + (list.length + 1));
               seenTitles.add(name.toLowerCase());
               list.push({
-                id: `prov-${prov.providerName}-${idx}-${sub.uri}`,
+                id: "prov-" + prov.providerName + "-" + idx + "-" + sub.uri,
                 title: name,
                 language: sub.language,
                 uri: sub.uri,
@@ -1918,13 +1976,13 @@ export default function NativeWebPlayer({
       });
     });
 
-    // 3. From HLS stream internal tracks
+    // 3. From current HLS stream internal tracks
     hlsSubtitles.forEach((track, idx) => {
-      const name = track.name || track.lang || `Track ${idx + 1}`;
+      const name = track.name || track.lang || ("Track " + (idx + 1));
       if (!list.some(s => s.title.toLowerCase() === name.toLowerCase())) {
         seenTitles.add(name.toLowerCase());
         list.push({
-          id: `hls-${idx}`,
+          id: "hls-" + idx,
           title: name,
           language: track.lang,
           hlsIndex: idx,
@@ -1945,7 +2003,7 @@ export default function NativeWebPlayer({
     uploadedSubtitles.forEach(s => list.push(s));
 
     return list;
-  }, [selectedStream, providerResults, vidlyResults, vidboltResults, vidyResults, hlsSubtitles, autoSubtitles, uploadedSubtitles]);
+  }, [selectedStream, providerResults, hlsSubtitles, autoSubtitles, uploadedSubtitles]);
 
   // Handle Subtitle Selection
   const handleSelectSubtitle = (subId: string) => {
@@ -2486,6 +2544,9 @@ export default function NativeWebPlayer({
           startLevel: -1,
           autoStartLoad: true,
           startPosition: seekTo > 0 ? seekTo : -1,
+          startFragPrefetch: true,
+          progressive: true,
+          testBandwidth: false,
           fragLoadingTimeOut: 25000,
           fragLoadingMaxRetry: 6,
           fragLoadingRetryDelay: 500,
@@ -2500,6 +2561,34 @@ export default function NativeWebPlayer({
 
         hls.loadSource(streamUrl);
         hls.attachMedia(videoRef.current);
+
+        const syncAudioTracksFromHls = (tracks: any[]) => {
+          if (!tracks || tracks.length === 0) return;
+          setHlsAudioTracks(tracks);
+          const preferred = activeLanguage || 'Hindi';
+          const aliases = LANG_CODE_ALIASES[preferred] || [preferred.toLowerCase()];
+          const matchIdx = tracks.findIndex((t: any) => {
+            const tLang = (t.lang || '').toLowerCase().trim();
+            const tName = (t.name || '').toLowerCase().trim();
+            const parsed = parseWordToLanguage(tName) || parseWordToLanguage(tLang);
+            return parsed === preferred || aliases.some((a) => tLang === a || tName.includes(a) || tLang.includes(a));
+          });
+          if (matchIdx !== -1) {
+            if (hls.audioTrack !== matchIdx) {
+              hls.audioTrack = matchIdx;
+            }
+            setCurrentHlsAudioTrack(matchIdx);
+            setActiveLanguage(preferred);
+          } else if (tracks.length > 1) {
+            const curIdx = hls.audioTrack >= 0 ? hls.audioTrack : 0;
+            const currentTrack = tracks[curIdx];
+            const detected = parseWordToLanguage(currentTrack?.name || '') || parseWordToLanguage(currentTrack?.lang || '');
+            if (detected) {
+              setActiveLanguage(detected);
+            }
+            setCurrentHlsAudioTrack(curIdx);
+          }
+        };
 
         hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
           if (seekTo > 0 && videoRef.current && Math.abs(videoRef.current.currentTime - seekTo) > 2) {
@@ -2520,28 +2609,7 @@ export default function NativeWebPlayer({
           }
 
           if (hls.audioTracks && hls.audioTracks.length > 0) {
-            setHlsAudioTracks(hls.audioTracks);
-            const preferred = activeLanguage || 'Hindi';
-            const aliases = LANG_CODE_ALIASES[preferred] || [preferred.toLowerCase()];
-            const matchIdx = hls.audioTracks.findIndex((t: any) => {
-              const tLang = (t.lang || '').toLowerCase();
-              const tName = (t.name || '').toLowerCase();
-              return aliases.some((a) => tLang === a || tName.includes(a));
-            });
-            if (matchIdx !== -1) {
-              if (hls.audioTrack !== matchIdx) {
-                hls.audioTrack = matchIdx;
-              }
-              setCurrentHlsAudioTrack(matchIdx);
-              setActiveLanguage(preferred);
-            } else {
-              const currentTrack = hls.audioTracks[hls.audioTrack >= 0 ? hls.audioTrack : 0];
-              const detected = parseWordToLanguage(currentTrack?.name || currentTrack?.lang || '');
-              if (detected) {
-                setActiveLanguage(detected);
-              }
-              setCurrentHlsAudioTrack(hls.audioTrack);
-            }
+            syncAudioTracksFromHls(hls.audioTracks);
           }
 
           if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
@@ -2553,38 +2621,23 @@ export default function NativeWebPlayer({
         });
 
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
-          if (data?.audioTracks && data.audioTracks.length > 0) {
-            setHlsAudioTracks(data.audioTracks);
-            const preferred = activeLanguage || 'Hindi';
-            const aliases = LANG_CODE_ALIASES[preferred] || [preferred.toLowerCase()];
-            const matchIdx = data.audioTracks.findIndex((t: any) => {
-              const tLang = (t.lang || '').toLowerCase();
-              const tName = (t.name || '').toLowerCase();
-              return aliases.some((a) => tLang === a || tName.includes(a));
-            });
-            if (matchIdx !== -1) {
-              if (hls.audioTrack !== matchIdx) {
-                hls.audioTrack = matchIdx;
-              }
-              setCurrentHlsAudioTrack(matchIdx);
-              setActiveLanguage(preferred);
-            } else if (activeLanguage === 'Hindi') {
-              const currentTrack = data.audioTracks[hls.audioTrack >= 0 ? hls.audioTrack : 0];
-              const detected = parseWordToLanguage(currentTrack?.name || currentTrack?.lang || '');
-              if (detected) {
-                setActiveLanguage(detected);
-              }
-            }
+          const tracks = (data?.audioTracks && data.audioTracks.length > 0) ? data.audioTracks : (hls.audioTracks || []);
+          syncAudioTracksFromHls(tracks);
+        });
+
+        hls.on(Hls.Events.AUDIO_TRACK_LOADED, (_event, data) => {
+          if (hls.audioTracks && hls.audioTracks.length > 0) {
+            setHlsAudioTracks(hls.audioTracks);
           }
         });
 
         hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
           if (typeof data?.id === 'number') {
             setCurrentHlsAudioTrack(data.id);
-            if (hls.audioTracks && hls.audioTracks[data.id]) {
+            if (hls.audioTracks && hls.audioTracks.length > 1 && hls.audioTracks[data.id]) {
               const track = hls.audioTracks[data.id];
               const rawName = (track.name || track.lang || '').trim();
-              const detected = parseWordToLanguage(rawName);
+              const detected = parseWordToLanguage(track.name || '') || parseWordToLanguage(track.lang || '') || parseWordToLanguage(rawName);
               if (detected) {
                 setActiveLanguage(detected);
               }

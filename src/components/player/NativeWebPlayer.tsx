@@ -587,11 +587,10 @@ export default function NativeWebPlayer({
   const [selectedStream, setSelectedStream] = useState<StreamItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Active Server Provider ('vidly' | 'vidbolt' | 'cineverse' | 'vidy') & Server Switcher States
-  const [activeServerProvider, setActiveServerProvider] = useState<'vidly' | 'vidbolt' | 'cineverse' | 'vidy'>('vidly');
+  // Active Server Provider ('vidly' | 'vidbolt' | 'vidy') & Server Switcher States
+  const [activeServerProvider, setActiveServerProvider] = useState<'vidly' | 'vidbolt' | 'vidy'>('vidly');
   const [vidlyResults, setVidlyResults] = useState<ProviderResult[]>([]);
   const [vidboltResults, setVidboltResults] = useState<ProviderResult[]>([]);
-  const [cineverseResults, setCineverseResults] = useState<ProviderResult[]>([]);
   const [vidyResults, setVidyResults] = useState<ProviderResult[]>([]);
   const [showServerQualityMenu, setShowServerQualityMenu] = useState<boolean>(false);
   const serverQualityMenuRef = useRef<HTMLDivElement>(null);
@@ -1485,7 +1484,6 @@ export default function NativeWebPlayer({
       providerResults.find((p) => p.providerName === selectedStream.providerName) ||
       vidlyResults.find((p) => p.providerName === selectedStream.providerName) ||
       vidboltResults.find((p) => p.providerName === selectedStream.providerName) ||
-      cineverseResults.find((p) => p.providerName === selectedStream.providerName) ||
       vidyResults.find((p) => p.providerName === selectedStream.providerName);
 
     const streamLangs = getStreamAudioLanguages(selectedStream, currentProv?.infoTitle, originalLanguage);
@@ -1522,7 +1520,7 @@ export default function NativeWebPlayer({
         setActiveLanguage(streamLangs[0]);
       }
     }
-  }, [selectedStream, providerResults, vidlyResults, vidboltResults, cineverseResults, vidyResults, originalLanguage, hlsAudioTracks, currentHlsAudioTrack, activeLanguage]);
+  }, [selectedStream, providerResults, vidlyResults, vidboltResults, vidyResults, originalLanguage, hlsAudioTracks, currentHlsAudioTrack, activeLanguage]);
 
   // Instant Audio Switcher Handler: switches audio immediately without redirecting to servers list
   const handleSelectLanguage = (targetLang: string) => {
@@ -1557,7 +1555,6 @@ export default function NativeWebPlayer({
       ...providerResults,
       ...vidlyResults,
       ...vidboltResults,
-      ...cineverseResults,
       ...vidyResults,
     ];
 
@@ -1614,10 +1611,7 @@ export default function NativeWebPlayer({
 
       // Synchronize provider and results to ensure UI consistency
       const pName = (candidateStream.providerName || '').toLowerCase();
-      if (pName.includes('cineverse')) {
-        setActiveServerProvider('cineverse');
-        setProviderResults(cineverseResults);
-      } else if (pName.includes('vidly')) {
+      if (pName.includes('vidly')) {
         setActiveServerProvider('vidly');
         setProviderResults(vidlyResults);
       } else if (pName.includes('vidbolt')) {
@@ -1640,11 +1634,11 @@ export default function NativeWebPlayer({
   interface UniqueServerOption {
     id: string;
     name: string;
-    provider: 'vidly' | 'vidbolt' | 'cineverse' | 'vidy';
+    provider: 'vidly' | 'vidbolt' | 'vidy';
     streams: StreamItem[];
   }
 
-  // Deduplicated servers list (Server 1: Vidly, Server 2: VidBolt, Server 3: Cineverse, Server 4: Vidy)
+  // Deduplicated servers list (Server 1: Vidly, Server 2: VidBolt, Server 3: Vidy Node)
   const availableServers = useMemo<UniqueServerOption[]>(() => {
     const list: UniqueServerOption[] = [];
     const seen = new Set<string>();
@@ -1689,31 +1683,11 @@ export default function NativeWebPlayer({
       });
     });
 
-    // Server 3: Cineverse
-    cineverseResults.forEach((prov) => {
-      prov.streams?.forEach((s) => {
-        if (!isPlayableStream(s)) return;
-        const name = s.server || 'Server 3 (Cineverse Multi-Audio)';
-        const key = `cineverse-${name}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          list.push({
-            id: key,
-            name,
-            provider: 'cineverse',
-            streams: [{ ...s, providerName: prov.providerName }],
-          });
-        } else {
-          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
-        }
-      });
-    });
-
-    // Server 4: Vidy
+    // Server 3: Vidy
     vidyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (!isPlayableStream(s)) return;
-        const name = s.server || 'Server 4 (Vidy Node)';
+        const name = s.server || 'Server 3 (Vidy Node)';
         const key = `vidy-${name}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -1730,10 +1704,10 @@ export default function NativeWebPlayer({
     });
 
     return list;
-  }, [vidlyResults, vidboltResults, cineverseResults, vidyResults]);
+  }, [vidlyResults, vidboltResults, vidyResults]);
 
-  // Handle Manual Server Switching between Vidly, VidBolt, Cineverse, and Vidy
-  const handleSelectServer = (targetProvider: 'vidly' | 'vidbolt' | 'cineverse' | 'vidy', stream: StreamItem) => {
+  // Handle Manual Server Switching between Vidly, VidBolt, and Vidy
+  const handleSelectServer = (targetProvider: 'vidly' | 'vidbolt' | 'vidy', stream: StreamItem) => {
     if (stream.link === selectedStream?.link) {
       setShowServerQualityMenu(false);
       setShowMobileDrawer(false);
@@ -1748,9 +1722,7 @@ export default function NativeWebPlayer({
         ? vidlyResults
         : targetProvider === 'vidbolt'
           ? vidboltResults
-          : targetProvider === 'cineverse'
-            ? cineverseResults
-            : vidyResults;
+          : vidyResults;
     if (results && results.length > 0) {
       setProviderResults(results);
     }
@@ -1790,7 +1762,7 @@ export default function NativeWebPlayer({
 
     // Refresh Audio Language for new server:
     // If the new server stream doesn't match activeLanguage, align with the new stream's language
-    const currentProvForStream = results?.find(p => p.providerName === (stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : targetProvider === 'cineverse' ? 'SnapFlix Cineverse' : 'Vidy VPS')));
+    const currentProvForStream = results?.find(p => p.providerName === (stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : 'Vidy VPS')));
     const streamLangs = getStreamAudioLanguages(stream, currentProvForStream?.infoTitle, originalLanguage);
     if (streamLangs.length > 0 && !streamLangs.includes(activeLanguage)) {
       if (streamLangs.includes('Hindi')) {
@@ -1802,7 +1774,7 @@ export default function NativeWebPlayer({
 
     setSelectedStream({
       ...stream,
-      providerName: stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : targetProvider === 'cineverse' ? 'SnapFlix Cineverse' : 'Vidy VPS'),
+      providerName: stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : 'Vidy VPS'),
     });
 
     setShowServerQualityMenu(false);
@@ -2356,22 +2328,19 @@ export default function NativeWebPlayer({
 
         const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
         const vidboltApiBase = (process.env.NEXT_PUBLIC_VIDBOLT_URL || 'https://vidbolt.snapflix.indevs.in').replace(/\/$/, '');
-        const cineverseApiBase = (process.env.NEXT_PUBLIC_CINEVERSE_URL || 'https://cineverse.snapflix.indevs.in').replace(/\/$/, '');
         const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
         const primaryUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
         const vidboltUrl = `${vidboltApiBase}/api/provider/resolve?${params.toString()}`;
-        const cineverseUrl = `${cineverseApiBase}/api/provider/resolve?${params.toString()}`;
         const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
 
         // Reset standby fallback and results for this new media load
         standbyFallbackRef.current = null;
         setVidlyResults([]);
         setVidboltResults([]);
-        setCineverseResults([]);
         setVidyResults([]);
 
-        // Parallel initiation: Fetch Primary (Vidly), Server 2 (VidBolt), Server 3 (Cineverse), and Server 4 (Vidy) simultaneously
+        // Parallel initiation: Fetch Primary (Vidly), Server 2 (VidBolt), and Server 3 (Vidy) simultaneously
         const primaryPromise = fetch(primaryUrl)
           .then(async (r) => (r.ok ? r.json() : null))
           .catch((err) => {
@@ -2386,13 +2355,6 @@ export default function NativeWebPlayer({
             return null;
           });
 
-        const cineversePromise = fetch(cineverseUrl)
-          .then(async (r) => (r.ok ? r.json() : null))
-          .catch((err) => {
-            console.warn('[Player] Cineverse resolve network error:', err);
-            return null;
-          });
-
         const secPromise = fetch(secUrl)
           .then(async (r) => (r.ok ? r.json() : null))
           .catch((err) => {
@@ -2400,18 +2362,11 @@ export default function NativeWebPlayer({
             return null;
           });
 
-        // Pre-warm VidBolt, Cineverse & Vidy in memory (passive background)
+        // Pre-warm VidBolt & Vidy in memory (passive background)
         vidboltPromise.then((vbData) => {
           if (active && vbData?.success && Array.isArray(vbData.results) && vbData.results.length > 0) {
             setVidboltResults(vbData.results);
             console.log('[Player] Server 2 (VidBolt) pre-warmed & ready in memory');
-          }
-        });
-
-        cineversePromise.then((cvData) => {
-          if (active && cvData?.success && Array.isArray(cvData.results) && cvData.results.length > 0) {
-            setCineverseResults(cvData.results);
-            console.log('[Player] Server 3 (Cineverse) pre-warmed & ready in memory');
           }
         });
 
@@ -2426,7 +2381,7 @@ export default function NativeWebPlayer({
         // 1. Await Vidly (Primary Edge)
         const primaryData = await primaryPromise;
         let chosenResults: any[] = [];
-        let chosenProvider: 'vidly' | 'vidbolt' | 'cineverse' | 'vidy' = 'vidly';
+        let chosenProvider: 'vidly' | 'vidbolt' | 'vidy' = 'vidly';
 
         const hasValidPrimary =
           primaryData?.success &&
@@ -2446,20 +2401,12 @@ export default function NativeWebPlayer({
             setVidboltResults(vbData.results);
             chosenProvider = 'vidbolt';
           } else {
-            console.warn('[Player] VidBolt returned no streams. Trying Server 3 (Cineverse)...');
-            const cvData = await cineversePromise;
-            if (cvData?.success && Array.isArray(cvData.results) && cvData.results.length > 0) {
-              chosenResults = cvData.results;
-              setCineverseResults(cvData.results);
-              chosenProvider = 'cineverse';
-            } else {
-              console.warn('[Player] Cineverse returned no streams. Falling back to Server 4 (Vidy)...');
-              const secData = await secPromise;
-              if (secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
-                chosenResults = secData.results;
-                setVidyResults(secData.results);
-                chosenProvider = 'vidy';
-              }
+            console.warn('[Player] VidBolt returned no streams. Falling back to Server 3 (Vidy)...');
+            const secData = await secPromise;
+            if (secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
+              chosenResults = secData.results;
+              setVidyResults(secData.results);
+              chosenProvider = 'vidy';
             }
           }
         }
@@ -2547,13 +2494,8 @@ export default function NativeWebPlayer({
 
   // 2. Playable URL with Proxy rewrite
   const getPlayableUrl = useCallback((stream: StreamItem) => {
-    // If stream is already proxied or is our own Cineverse / Vidbolt server, play directly with 0 proxy overhead
-    if (
-      stream.link.includes('proxy-stream') ||
-      stream.link.includes('/api/proxy') ||
-      stream.link.includes('cineverse.snapflix.indevs.in') ||
-      stream.link.includes('/api/stream/master.m3u8')
-    ) {
+    // If stream is already proxied through our edge gateway or backend proxy, do not double proxy
+    if (stream.link.includes('proxy-stream') || stream.link.includes('/api/proxy')) {
       return stream.link;
     }
 
@@ -2749,13 +2691,7 @@ export default function NativeWebPlayer({
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 // If direct stream failed, attempt proxy fallback once via dedicated VPS proxy
-                if (
-                  hls.url &&
-                  !hls.url.includes('proxy-stream') &&
-                  !hls.url.includes('/api/proxy') &&
-                  !hls.url.includes('cineverse.snapflix.indevs.in') &&
-                  !hls.url.includes('/api/stream/master.m3u8')
-                ) {
+                if (hls.url && !hls.url.includes('proxy-stream') && !hls.url.includes('/api/proxy')) {
                   const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
                   const proxyUrl = `${vpsApiBase}/api/proxy/stream?v=2&url=${encodeURIComponent(

@@ -587,10 +587,11 @@ export default function NativeWebPlayer({
   const [selectedStream, setSelectedStream] = useState<StreamItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Active Server Provider ('vidly' | 'vidbolt' | 'vidy') & Server Switcher States
-  const [activeServerProvider, setActiveServerProvider] = useState<'vidly' | 'vidbolt' | 'vidy'>('vidly');
+  // Active Server Provider ('vidly' | 'vidbolt' | 'vidrift' | 'vidy') & Server Switcher States
+  const [activeServerProvider, setActiveServerProvider] = useState<'vidly' | 'vidbolt' | 'vidrift' | 'vidy'>('vidly');
   const [vidlyResults, setVidlyResults] = useState<ProviderResult[]>([]);
   const [vidboltResults, setVidboltResults] = useState<ProviderResult[]>([]);
+  const [vidriftResults, setVidriftResults] = useState<ProviderResult[]>([]);
   const [vidyResults, setVidyResults] = useState<ProviderResult[]>([]);
   const [showServerQualityMenu, setShowServerQualityMenu] = useState<boolean>(false);
   const serverQualityMenuRef = useRef<HTMLDivElement>(null);
@@ -1046,6 +1047,7 @@ export default function NativeWebPlayer({
   const resumeTimeRef = useRef<number | null>(null);
   const failedStreamLinksRef = useRef<Set<string>>(new Set());
   const standbyFallbackRef = useRef<{ provider: 'Vidy'; results: any[] } | null>(null);
+  const userSelectedLangRef = useRef<string | null>(null);
   const [activeLanguage, setActiveLanguage] = useState<string>('Hindi');
   const [hlsAudioTracks, setHlsAudioTracks] = useState<any[]>([]);
   const [currentHlsAudioTrack, setCurrentHlsAudioTrack] = useState<number>(-1);
@@ -1480,10 +1482,18 @@ export default function NativeWebPlayer({
   // Keep activeLanguage in sync with current stream
   useEffect(() => {
     if (!selectedStream) return;
+
+    // If the user manually selected an audio language, respect their choice and don't auto-reset it!
+    if (userSelectedLangRef.current) {
+      setActiveLanguage(userSelectedLangRef.current);
+      return;
+    }
+
     const currentProv =
       providerResults.find((p) => p.providerName === selectedStream.providerName) ||
       vidlyResults.find((p) => p.providerName === selectedStream.providerName) ||
       vidboltResults.find((p) => p.providerName === selectedStream.providerName) ||
+      vidriftResults.find((p) => p.providerName === selectedStream.providerName) ||
       vidyResults.find((p) => p.providerName === selectedStream.providerName);
 
     const streamLangs = getStreamAudioLanguages(selectedStream, currentProv?.infoTitle, originalLanguage);
@@ -1520,16 +1530,21 @@ export default function NativeWebPlayer({
         setActiveLanguage(streamLangs[0]);
       }
     }
-  }, [selectedStream, providerResults, vidlyResults, vidboltResults, vidyResults, originalLanguage, hlsAudioTracks, currentHlsAudioTrack, activeLanguage]);
+  }, [selectedStream, providerResults, vidlyResults, vidboltResults, vidriftResults, vidyResults, originalLanguage, hlsAudioTracks, currentHlsAudioTrack]);
 
   // Instant Audio Switcher Handler: switches audio immediately without redirecting to servers list
   const handleSelectLanguage = (targetLang: string) => {
+    userSelectedLangRef.current = targetLang;
     setActiveLanguage(targetLang);
 
     // 1. If current playing HLS has MULTIPLE internal tracks (> 1), switch internal track directly
-    if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 1) {
+    const effectiveTracks = (hlsRef.current?.audioTracks && hlsRef.current.audioTracks.length > 0)
+      ? hlsRef.current.audioTracks
+      : hlsAudioTracks;
+
+    if (hlsRef.current && effectiveTracks && effectiveTracks.length > 1) {
       const aliases = LANG_CODE_ALIASES[targetLang] || [targetLang.toLowerCase()];
-      const trackIdx = hlsRef.current.audioTracks.findIndex((t: any) => {
+      const trackIdx = effectiveTracks.findIndex((t: any) => {
         const tLang = (t.lang || '').toLowerCase().trim();
         const tName = (t.name || '').toLowerCase().trim();
         const parsed = parseWordToLanguage(tName) || parseWordToLanguage(tLang);
@@ -1541,7 +1556,9 @@ export default function NativeWebPlayer({
         );
       });
       if (trackIdx !== -1) {
-        hlsRef.current.audioTrack = trackIdx;
+        const track = effectiveTracks[trackIdx];
+        const trackIdToSet = typeof track?.id === 'number' ? track.id : trackIdx;
+        hlsRef.current.audioTrack = trackIdToSet;
         setCurrentHlsAudioTrack(trackIdx);
         setShowAudioMenu(false);
         setShowMobileDrawer(false);
@@ -1551,10 +1568,13 @@ export default function NativeWebPlayer({
 
     // 2. Find best playable stream supporting targetLang across providers
     let candidateStream: StreamItem | null = null;
+    let candidateProvider: 'vidly' | 'vidbolt' | 'vidrift' | 'vidy' = activeServerProvider;
+
     const allProvidersList = [
       ...providerResults,
       ...vidlyResults,
       ...vidboltResults,
+      ...vidriftResults,
       ...vidyResults,
     ];
 
@@ -1617,6 +1637,9 @@ export default function NativeWebPlayer({
       } else if (pName.includes('vidbolt')) {
         setActiveServerProvider('vidbolt');
         setProviderResults(vidboltResults);
+      } else if (pName.includes('vidrift')) {
+        setActiveServerProvider('vidrift');
+        setProviderResults(vidriftResults);
       } else if (pName.includes('vidy')) {
         setActiveServerProvider('vidy');
         setProviderResults(vidyResults);
@@ -1634,11 +1657,11 @@ export default function NativeWebPlayer({
   interface UniqueServerOption {
     id: string;
     name: string;
-    provider: 'vidly' | 'vidbolt' | 'vidy';
+    provider: 'vidly' | 'vidbolt' | 'vidrift' | 'vidy';
     streams: StreamItem[];
   }
 
-  // Deduplicated servers list (Server 1: Vidly, Server 2: VidBolt, Server 3: Vidy Node)
+  // Deduplicated servers list (Server 1: Vidly, Server 2: VidBolt, Server 3: VidRift, Server 4: Vidy Node)
   const availableServers = useMemo<UniqueServerOption[]>(() => {
     const list: UniqueServerOption[] = [];
     const seen = new Set<string>();
@@ -1683,11 +1706,31 @@ export default function NativeWebPlayer({
       });
     });
 
-    // Server 3: Vidy
+    // Server 3: VidRift
+    vidriftResults.forEach((prov) => {
+      prov.streams?.forEach((s) => {
+        if (!isPlayableStream(s)) return;
+        const name = s.server || 'Server 3 (VidRift Fast HLS)';
+        const key = `vidrift-${name}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push({
+            id: key,
+            name,
+            provider: 'vidrift',
+            streams: [{ ...s, providerName: prov.providerName }],
+          });
+        } else {
+          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
+        }
+      });
+    });
+
+    // Server 4: Vidy
     vidyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (!isPlayableStream(s)) return;
-        const name = s.server || 'Server 3 (Vidy Node)';
+        const name = s.server || 'Server 4 (Vidy Node)';
         const key = `vidy-${name}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -1704,10 +1747,10 @@ export default function NativeWebPlayer({
     });
 
     return list;
-  }, [vidlyResults, vidboltResults, vidyResults]);
+  }, [vidlyResults, vidboltResults, vidriftResults, vidyResults]);
 
-  // Handle Manual Server Switching between Vidly, VidBolt, and Vidy
-  const handleSelectServer = (targetProvider: 'vidly' | 'vidbolt' | 'vidy', stream: StreamItem) => {
+  // Handle Manual Server Switching between Vidly, VidBolt, VidRift, and Vidy
+  const handleSelectServer = (targetProvider: 'vidly' | 'vidbolt' | 'vidrift' | 'vidy', stream: StreamItem) => {
     if (stream.link === selectedStream?.link) {
       setShowServerQualityMenu(false);
       setShowMobileDrawer(false);
@@ -1722,7 +1765,9 @@ export default function NativeWebPlayer({
         ? vidlyResults
         : targetProvider === 'vidbolt'
           ? vidboltResults
-          : vidyResults;
+          : targetProvider === 'vidrift'
+            ? vidriftResults
+            : vidyResults;
     if (results && results.length > 0) {
       setProviderResults(results);
     }
@@ -1762,7 +1807,7 @@ export default function NativeWebPlayer({
 
     // Refresh Audio Language for new server:
     // If the new server stream doesn't match activeLanguage, align with the new stream's language
-    const currentProvForStream = results?.find(p => p.providerName === (stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : 'Vidy VPS')));
+    const currentProvForStream = results?.find(p => p.providerName === (stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : targetProvider === 'vidrift' ? 'VidRift Fast HLS' : 'Vidy VPS')));
     const streamLangs = getStreamAudioLanguages(stream, currentProvForStream?.infoTitle, originalLanguage);
     if (streamLangs.length > 0 && !streamLangs.includes(activeLanguage)) {
       if (streamLangs.includes('Hindi')) {
@@ -1774,7 +1819,7 @@ export default function NativeWebPlayer({
 
     setSelectedStream({
       ...stream,
-      providerName: stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : 'Vidy VPS'),
+      providerName: stream.providerName || (targetProvider === 'vidly' ? 'Vidly Edge' : targetProvider === 'vidbolt' ? 'SnapFlix VidBolt' : targetProvider === 'vidrift' ? 'VidRift Fast HLS' : 'Vidy VPS'),
     });
 
     setShowServerQualityMenu(false);
@@ -2328,19 +2373,22 @@ export default function NativeWebPlayer({
 
         const primaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
         const vidboltApiBase = (process.env.NEXT_PUBLIC_VIDBOLT_URL || 'https://vidbolt.snapflix.indevs.in').replace(/\/$/, '');
+        const vidriftApiBase = (process.env.NEXT_PUBLIC_VIDRIFT_URL || 'https://vidrift.snapflix.indevs.in').replace(/\/$/, '');
         const secondaryApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
         const primaryUrl = `${primaryApiBase}/api/provider/resolve?${params.toString()}`;
         const vidboltUrl = `${vidboltApiBase}/api/provider/resolve?${params.toString()}`;
+        const vidriftUrl = `${vidriftApiBase}/api/provider/resolve?${params.toString()}`;
         const secUrl = `${secondaryApiBase}/api/provider/resolve?${params.toString()}`;
 
         // Reset standby fallback and results for this new media load
         standbyFallbackRef.current = null;
         setVidlyResults([]);
         setVidboltResults([]);
+        setVidriftResults([]);
         setVidyResults([]);
 
-        // Parallel initiation: Fetch Primary (Vidly), Server 2 (VidBolt), and Server 3 (Vidy) simultaneously
+        // Parallel initiation: Fetch Vidly, VidBolt, VidRift, and Vidy simultaneously
         const primaryPromise = fetch(primaryUrl)
           .then(async (r) => (r.ok ? r.json() : null))
           .catch((err) => {
@@ -2355,6 +2403,13 @@ export default function NativeWebPlayer({
             return null;
           });
 
+        const vidriftPromise = fetch(vidriftUrl)
+          .then(async (r) => (r.ok ? r.json() : null))
+          .catch((err) => {
+            console.warn('[Player] VidRift resolve network error:', err);
+            return null;
+          });
+
         const secPromise = fetch(secUrl)
           .then(async (r) => (r.ok ? r.json() : null))
           .catch((err) => {
@@ -2362,11 +2417,18 @@ export default function NativeWebPlayer({
             return null;
           });
 
-        // Pre-warm VidBolt & Vidy in memory (passive background)
+        // Pre-warm VidBolt, VidRift & Vidy in memory (passive background)
         vidboltPromise.then((vbData) => {
           if (active && vbData?.success && Array.isArray(vbData.results) && vbData.results.length > 0) {
             setVidboltResults(vbData.results);
             console.log('[Player] Server 2 (VidBolt) pre-warmed & ready in memory');
+          }
+        });
+
+        vidriftPromise.then((vrData) => {
+          if (active && vrData?.success && Array.isArray(vrData.results) && vrData.results.length > 0) {
+            setVidriftResults(vrData.results);
+            console.log('[Player] Server 3 (VidRift) pre-warmed & ready in memory');
           }
         });
 
@@ -2381,7 +2443,7 @@ export default function NativeWebPlayer({
         // 1. Await Vidly (Primary Edge)
         const primaryData = await primaryPromise;
         let chosenResults: any[] = [];
-        let chosenProvider: 'vidly' | 'vidbolt' | 'vidy' = 'vidly';
+        let chosenProvider: 'vidly' | 'vidbolt' | 'vidrift' | 'vidy' = 'vidly';
 
         const hasValidPrimary =
           primaryData?.success &&
@@ -2401,12 +2463,20 @@ export default function NativeWebPlayer({
             setVidboltResults(vbData.results);
             chosenProvider = 'vidbolt';
           } else {
-            console.warn('[Player] VidBolt returned no streams. Falling back to Server 3 (Vidy)...');
-            const secData = await secPromise;
-            if (secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
-              chosenResults = secData.results;
-              setVidyResults(secData.results);
-              chosenProvider = 'vidy';
+            console.warn('[Player] VidBolt returned no streams. Trying Server 3 (VidRift)...');
+            const vrData = await vidriftPromise;
+            if (vrData?.success && Array.isArray(vrData.results) && vrData.results.length > 0) {
+              chosenResults = vrData.results;
+              setVidriftResults(vrData.results);
+              chosenProvider = 'vidrift';
+            } else {
+              console.warn('[Player] VidRift returned no streams. Falling back to Server 4 (Vidy)...');
+              const secData = await secPromise;
+              if (secData?.success && Array.isArray(secData.results) && secData.results.length > 0) {
+                chosenResults = secData.results;
+                setVidyResults(secData.results);
+                chosenProvider = 'vidy';
+              }
             }
           }
         }
@@ -2494,8 +2564,13 @@ export default function NativeWebPlayer({
 
   // 2. Playable URL with Proxy rewrite
   const getPlayableUrl = useCallback((stream: StreamItem) => {
-    // If stream is already proxied through our edge gateway or backend proxy, do not double proxy
-    if (stream.link.includes('proxy-stream') || stream.link.includes('/api/proxy')) {
+    // If stream is already proxied through our edge gateway or backend proxy, or is direct VidRift / Milkyway CORS CDN, do not proxy
+    if (
+      stream.link.includes('proxy-stream') ||
+      stream.link.includes('/api/proxy') ||
+      stream.link.includes('milkyway.cymru') ||
+      stream.link.includes('vidrift.')
+    ) {
       return stream.link;
     }
 
@@ -2587,7 +2662,7 @@ export default function NativeWebPlayer({
         const syncAudioTracksFromHls = (tracks: any[]) => {
           if (!tracks || tracks.length === 0) return;
           setHlsAudioTracks(tracks);
-          const preferred = activeLanguage || 'Hindi';
+          const preferred = userSelectedLangRef.current || activeLanguage || 'Hindi';
           const aliases = LANG_CODE_ALIASES[preferred] || [preferred.toLowerCase()];
           const matchIdx = tracks.findIndex((t: any) => {
             const tLang = (t.lang || '').toLowerCase().trim();
@@ -2596,8 +2671,10 @@ export default function NativeWebPlayer({
             return parsed === preferred || aliases.some((a) => tLang === a || tName.includes(a) || tLang.includes(a));
           });
           if (matchIdx !== -1) {
-            if (hls.audioTrack !== matchIdx) {
-              hls.audioTrack = matchIdx;
+            const track = tracks[matchIdx];
+            const trackIdToSet = typeof track?.id === 'number' ? track.id : matchIdx;
+            if (hls.audioTrack !== trackIdToSet) {
+              hls.audioTrack = trackIdToSet;
             }
             setCurrentHlsAudioTrack(matchIdx);
             setActiveLanguage(preferred);
@@ -2655,9 +2732,12 @@ export default function NativeWebPlayer({
 
         hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
           if (typeof data?.id === 'number') {
-            setCurrentHlsAudioTrack(data.id);
-            if (hls.audioTracks && hls.audioTracks.length > 1 && hls.audioTracks[data.id]) {
-              const track = hls.audioTracks[data.id];
+            const tracks = hls.audioTracks || [];
+            const foundIdx = tracks.findIndex((t: any, idx: number) => t.id === data.id || idx === data.id);
+            const track = foundIdx !== -1 ? tracks[foundIdx] : tracks[data.id];
+            const idxToSave = foundIdx !== -1 ? foundIdx : data.id;
+            setCurrentHlsAudioTrack(idxToSave);
+            if (track) {
               const rawName = (track.name || track.lang || '').trim();
               const detected = parseWordToLanguage(track.name || '') || parseWordToLanguage(track.lang || '') || parseWordToLanguage(rawName);
               if (detected) {
@@ -3915,7 +3995,8 @@ export default function NativeWebPlayer({
                         <button
                           key={item.name}
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleSelectLanguage(item.name);
                           }}
                           className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${isActive
@@ -4671,7 +4752,8 @@ export default function NativeWebPlayer({
                       <button
                         key={item.name}
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleSelectLanguage(item.name);
                         }}
                         className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${isActive

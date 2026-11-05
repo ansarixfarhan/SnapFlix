@@ -2,17 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const PRIMARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://vidly.snapflix.indevs.in').replace(/\/$/, '');
 const VIDBOLT_BACKEND = (process.env.NEXT_PUBLIC_VIDBOLT_URL || 'https://vidbolt.snapflix.indevs.in').replace(/\/$/, '');
+const VIDRIFT_BACKEND = (process.env.NEXT_PUBLIC_VIDRIFT_URL || 'https://vidrift.snapflix.indevs.in').replace(/\/$/, '');
 const SECONDARY_BACKEND = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
   try {
-    const [primarySettled, vidboltSettled, secondarySettled] = await Promise.allSettled([
+    const [primarySettled, vidboltSettled, vidriftSettled, secondarySettled] = await Promise.allSettled([
       fetch(`${PRIMARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
         headers: { Accept: 'application/json' },
       }).then(async (r) => (r.ok ? r.json() : null)),
       fetch(`${VIDBOLT_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
+        headers: { Accept: 'application/json' },
+      }).then(async (r) => (r.ok ? r.json() : null)),
+      fetch(`${VIDRIFT_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
         headers: { Accept: 'application/json' },
       }).then(async (r) => (r.ok ? r.json() : null)),
       fetch(`${SECONDARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
@@ -22,16 +26,19 @@ export async function GET(request: NextRequest) {
 
     const primaryData = primarySettled.status === 'fulfilled' ? primarySettled.value : null;
     const vidboltData = vidboltSettled.status === 'fulfilled' ? vidboltSettled.value : null;
+    const vidriftData = vidriftSettled.status === 'fulfilled' ? vidriftSettled.value : null;
     const secondaryData = secondarySettled.status === 'fulfilled' ? secondarySettled.value : null;
 
     const combinedResults = [
       ...(primaryData?.results || []),
       ...(vidboltData?.results || []),
+      ...(vidriftData?.results || []),
       ...(secondaryData?.results || []),
     ];
     const combinedStreams = [
       ...(primaryData?.streams || []),
       ...(vidboltData?.streams || []),
+      ...(vidriftData?.streams || []),
       ...(secondaryData?.streams || []),
     ];
 
@@ -39,12 +46,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          query: primaryData?.query || vidboltData?.query || secondaryData?.query || {},
-          media: primaryData?.media || vidboltData?.media || secondaryData?.media || {},
-          tier: 'hybrid-3tier',
+          query: primaryData?.query || vidboltData?.query || vidriftData?.query || secondaryData?.query || {},
+          media: primaryData?.media || vidboltData?.media || vidriftData?.media || secondaryData?.media || {},
+          tier: 'hybrid-4tier',
           providersResponded: [
             ...(primaryData?.providersResponded || []),
             ...(vidboltData?.providersResponded || []),
+            ...(vidriftData?.providersResponded || []),
             ...(secondaryData?.providersResponded || []),
           ],
           totalStreams: combinedStreams.length,

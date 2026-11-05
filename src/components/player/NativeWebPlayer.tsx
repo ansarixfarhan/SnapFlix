@@ -316,22 +316,22 @@ export const LANGUAGE_FLAGS: Record<string, string> = {
 };
 
 export const LANG_CODE_ALIASES: Record<string, string[]> = {
-  Hindi: ['hi', 'hin', 'hindi'],
+  Hindi: ['hi', 'hin', 'hindi', 'हिन्दी', 'हिंदी'],
   English: ['en', 'eng', 'english'],
-  Tamil: ['ta', 'tam', 'tamil'],
-  Telugu: ['te', 'tel', 'telugu'],
+  Tamil: ['ta', 'tam', 'tamil', 'தமிழ்'],
+  Telugu: ['te', 'tel', 'telugu', 'తెలుగు'],
   Punjabi: ['pa', 'pan', 'punjabi'],
   Bengali: ['bn', 'ben', 'bengali'],
   Malayalam: ['ml', 'mal', 'malayalam'],
   Kannada: ['kn', 'kan', 'kannada'],
-  Japanese: ['ja', 'jpn', 'japanese'],
-  Korean: ['ko', 'kor', 'korean'],
+  Japanese: ['ja', 'jpn', 'japanese', '日本語'],
+  Korean: ['ko', 'kor', 'korean', '한국어'],
   Spanish: ['es', 'spa', 'spanish', 'esla', 'es-la', 'es_la', 'es419', 'es-419', 'latino', 'castellano', 'espanol', 'español'],
-  French: ['fr', 'fra', 'fre', 'french'],
-  German: ['de', 'ger', 'deu', 'german'],
-  Italian: ['it', 'ita', 'italian'],
-  Russian: ['ru', 'rus', 'russian'],
-  Arabic: ['ar', 'ara', 'arabic', 'ar-sa', 'arsa'],
+  French: ['fr', 'fra', 'fre', 'french', 'français'],
+  German: ['de', 'ger', 'deu', 'german', 'deutsch'],
+  Italian: ['it', 'ita', 'italian', 'italiano'],
+  Russian: ['ru', 'rus', 'russian', 'русский'],
+  Arabic: ['ar', 'ara', 'arabic', 'ar-sa', 'arsa', 'العربية'],
   Portuguese: ['pt', 'por', 'portuguese', 'ptbr', 'pt-br', 'pt_br', 'brazil', 'brasil'],
   Turkish: ['tr', 'tur', 'turkish'],
   Chinese: ['zh', 'chi', 'zho', 'chinese', 'mandarin', 'cantonese'],
@@ -346,6 +346,14 @@ export const LANG_CODE_ALIASES: Record<string, string[]> = {
 export function parseWordToLanguage(word: string): string | null {
   const s = word.toLowerCase().trim();
   if (!s) return null;
+
+  if (s.includes('हिन्दी') || s.includes('हिंदी')) return 'Hindi';
+  if (s.includes('தமிழ்')) return 'Tamil';
+  if (s.includes('తెలుగు')) return 'Telugu';
+  if (s.includes('한국어')) return 'Korean';
+  if (s.includes('日本語')) return 'Japanese';
+  if (s.includes('العربية')) return 'Arabic';
+  if (s.includes('русский')) return 'Russian';
 
   const clean = s.replace(/[^a-z0-9]/g, '');
   if (clean.startsWith('esla') || clean.startsWith('es419') || clean.startsWith('espa') || clean === 'esla') return 'Spanish';
@@ -1531,7 +1539,7 @@ export default function NativeWebPlayer({
           parsed === targetLang ||
           tName === targetLang.toLowerCase() ||
           tLang === targetLang.toLowerCase() ||
-          aliases.some((a) => tLang === a || tName.includes(a) || tLang.includes(a))
+          aliases.some((a) => tLang === a || tName === a || tName.includes(a) || tLang.includes(a))
         );
       });
       if (trackIdx !== -1) {
@@ -1603,6 +1611,23 @@ export default function NativeWebPlayer({
     if (candidateStream) {
       resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
       setSelectedStream(candidateStream);
+
+      // Synchronize provider and results to ensure UI consistency
+      const pName = (candidateStream.providerName || '').toLowerCase();
+      if (pName.includes('cineverse')) {
+        setActiveServerProvider('cineverse');
+        setProviderResults(cineverseResults);
+      } else if (pName.includes('vidly')) {
+        setActiveServerProvider('vidly');
+        setProviderResults(vidlyResults);
+      } else if (pName.includes('vidbolt')) {
+        setActiveServerProvider('vidbolt');
+        setProviderResults(vidboltResults);
+      } else if (pName.includes('vidy')) {
+        setActiveServerProvider('vidy');
+        setProviderResults(vidyResults);
+      }
+
       setShowAudioMenu(false);
       setShowMobileDrawer(false);
       return;

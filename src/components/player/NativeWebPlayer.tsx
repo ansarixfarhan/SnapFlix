@@ -149,66 +149,66 @@ export const SUBTITLE_LANGUAGE_DEFINITIONS: Array<{
   langCode: string;
   countryCode: string;
 }> = [
-  // South Asian Languages
-  { matches: ['hindi', 'हिन्दी', 'hindustani', 'hin', 'hi'], langCode: 'HI', countryCode: 'in' },
-  { matches: ['bengali', 'bangla', 'বাংলা', 'ben', 'bn'], langCode: 'BN', countryCode: 'bd' },
-  { matches: ['tamil', 'தமிழ்', 'tam', 'ta'], langCode: 'TA', countryCode: 'in' },
-  { matches: ['telugu', 'తెలుగు', 'tel', 'te'], langCode: 'TE', countryCode: 'in' },
-  { matches: ['kannada', 'ಕನ್ನಡ', 'kan', 'kn'], langCode: 'KN', countryCode: 'in' },
-  { matches: ['malayalam', 'മലയാളം', 'mal', 'ml'], langCode: 'ML', countryCode: 'in' },
-  { matches: ['marathi', 'मराठी', 'mar', 'mr'], langCode: 'MR', countryCode: 'in' },
-  { matches: ['gujarati', 'ગુજરાતી', 'guj', 'gu'], langCode: 'GU', countryCode: 'in' },
-  { matches: ['punjabi', 'ਪੰਜਾਬੀ', 'pan', 'pa'], langCode: 'PA', countryCode: 'in' },
-  { matches: ['urdu', 'اردو', 'urd', 'ur'], langCode: 'UR', countryCode: 'pk' },
+    // South Asian Languages
+    { matches: ['hindi', 'हिन्दी', 'hindustani', 'hin', 'hi'], langCode: 'HI', countryCode: 'in' },
+    { matches: ['bengali', 'bangla', 'বাংলা', 'ben', 'bn'], langCode: 'BN', countryCode: 'bd' },
+    { matches: ['tamil', 'தமிழ்', 'tam', 'ta'], langCode: 'TA', countryCode: 'in' },
+    { matches: ['telugu', 'తెలుగు', 'tel', 'te'], langCode: 'TE', countryCode: 'in' },
+    { matches: ['kannada', 'ಕನ್ನಡ', 'kan', 'kn'], langCode: 'KN', countryCode: 'in' },
+    { matches: ['malayalam', 'മലയാളം', 'mal', 'ml'], langCode: 'ML', countryCode: 'in' },
+    { matches: ['marathi', 'मराठी', 'mar', 'mr'], langCode: 'MR', countryCode: 'in' },
+    { matches: ['gujarati', 'ગુજરાતી', 'guj', 'gu'], langCode: 'GU', countryCode: 'in' },
+    { matches: ['punjabi', 'ਪੰਜਾਬੀ', 'pan', 'pa'], langCode: 'PA', countryCode: 'in' },
+    { matches: ['urdu', 'اردو', 'urd', 'ur'], langCode: 'UR', countryCode: 'pk' },
 
-  // Major World Languages
-  { matches: ['english', 'inglés', 'ingles', 'eng', 'en'], langCode: 'EN', countryCode: 'gb' },
-  { matches: ['spanish', 'español', 'espanol', 'castellano', 'espana', 'spa', 'es'], langCode: 'ES', countryCode: 'es' },
-  { matches: ['french', 'français', 'francais', 'fra', 'fre', 'fr'], langCode: 'FR', countryCode: 'fr' },
-  { matches: ['portuguese', 'português', 'portugues', 'por', 'pt'], langCode: 'PT', countryCode: 'br' },
-  { matches: ['german', 'deutsch', 'ger', 'deu', 'de'], langCode: 'DE', countryCode: 'de' },
-  { matches: ['italian', 'italiano', 'ita', 'it'], langCode: 'IT', countryCode: 'it' },
-  { matches: ['russian', 'русский', 'rus', 'ru'], langCode: 'RU', countryCode: 'ru' },
-  { matches: ['japanese', '日本語', 'jap', 'jpn', 'ja'], langCode: 'JA', countryCode: 'jp' },
-  { matches: ['korean', '한국어', 'kor', 'ko'], langCode: 'KO', countryCode: 'kr' },
-  { matches: ['chinese', '中文', 'mandarin', 'cantonese', 'chi', 'zho', 'zh'], langCode: 'ZH', countryCode: 'cn' },
-  { matches: ['arabic', 'العربية', 'عرب', 'arabi', 'ara', 'ar'], langCode: 'AR', countryCode: 'sa' },
-  { matches: ['turkish', 'türkçe', 'turkce', 'tur', 'tr'], langCode: 'TR', countryCode: 'tr' },
-  { matches: ['dutch', 'nederlands', 'nld', 'dut', 'nl'], langCode: 'NL', countryCode: 'nl' },
-  { matches: ['polish', 'polski', 'pol', 'pl'], langCode: 'PL', countryCode: 'pl' },
+    // Major World Languages
+    { matches: ['english', 'inglés', 'ingles', 'eng', 'en'], langCode: 'EN', countryCode: 'gb' },
+    { matches: ['spanish', 'español', 'espanol', 'castellano', 'espana', 'spa', 'es'], langCode: 'ES', countryCode: 'es' },
+    { matches: ['french', 'français', 'francais', 'fra', 'fre', 'fr'], langCode: 'FR', countryCode: 'fr' },
+    { matches: ['portuguese', 'português', 'portugues', 'por', 'pt'], langCode: 'PT', countryCode: 'br' },
+    { matches: ['german', 'deutsch', 'ger', 'deu', 'de'], langCode: 'DE', countryCode: 'de' },
+    { matches: ['italian', 'italiano', 'ita', 'it'], langCode: 'IT', countryCode: 'it' },
+    { matches: ['russian', 'русский', 'rus', 'ru'], langCode: 'RU', countryCode: 'ru' },
+    { matches: ['japanese', '日本語', 'jap', 'jpn', 'ja'], langCode: 'JA', countryCode: 'jp' },
+    { matches: ['korean', '한국어', 'kor', 'ko'], langCode: 'KO', countryCode: 'kr' },
+    { matches: ['chinese', '中文', 'mandarin', 'cantonese', 'chi', 'zho', 'zh'], langCode: 'ZH', countryCode: 'cn' },
+    { matches: ['arabic', 'العربية', 'عرب', 'arabi', 'ara', 'ar'], langCode: 'AR', countryCode: 'sa' },
+    { matches: ['turkish', 'türkçe', 'turkce', 'tur', 'tr'], langCode: 'TR', countryCode: 'tr' },
+    { matches: ['dutch', 'nederlands', 'nld', 'dut', 'nl'], langCode: 'NL', countryCode: 'nl' },
+    { matches: ['polish', 'polski', 'pol', 'pl'], langCode: 'PL', countryCode: 'pl' },
 
-  // Southeast Asian Languages
-  { matches: ['indonesian', 'indonesia', 'bahasa indonesia', 'ind', 'id'], langCode: 'ID', countryCode: 'id' },
-  { matches: ['malay', 'melayu', 'bahasa melayu', 'may', 'msa', 'ms'], langCode: 'MS', countryCode: 'my' },
-  { matches: ['vietnamese', 'tiếng việt', 'tieng viet', 'vie', 'vi'], langCode: 'VI', countryCode: 'vn' },
-  { matches: ['thai', 'ไทย', 'tha', 'th'], langCode: 'TH', countryCode: 'th' },
-  { matches: ['tagalog', 'filipino', 'tgl', 'tl'], langCode: 'TL', countryCode: 'ph' },
+    // Southeast Asian Languages
+    { matches: ['indonesian', 'indonesia', 'bahasa indonesia', 'ind', 'id'], langCode: 'ID', countryCode: 'id' },
+    { matches: ['malay', 'melayu', 'bahasa melayu', 'may', 'msa', 'ms'], langCode: 'MS', countryCode: 'my' },
+    { matches: ['vietnamese', 'tiếng việt', 'tieng viet', 'vie', 'vi'], langCode: 'VI', countryCode: 'vn' },
+    { matches: ['thai', 'ไทย', 'tha', 'th'], langCode: 'TH', countryCode: 'th' },
+    { matches: ['tagalog', 'filipino', 'tgl', 'tl'], langCode: 'TL', countryCode: 'ph' },
 
-  // European & Balkan Languages
-  { matches: ['croatian', 'hrvatski', 'hrv', 'hr'], langCode: 'HR', countryCode: 'hr' },
-  { matches: ['serbian', 'srpski', 'srp', 'sr'], langCode: 'SR', countryCode: 'rs' },
-  { matches: ['bosnian', 'bosanski', 'bos', 'bs'], langCode: 'BS', countryCode: 'ba' },
-  { matches: ['slovenian', 'slovenski', 'slv', 'sl'], langCode: 'SL', countryCode: 'si' },
-  { matches: ['bulgarian', 'български', 'bul', 'bg'], langCode: 'BG', countryCode: 'bg' },
-  { matches: ['macedonian', 'македонски', 'mkd', 'mk'], langCode: 'MK', countryCode: 'mk' },
-  { matches: ['albanian', 'shqip', 'sqi', 'alb', 'sq'], langCode: 'SQ', countryCode: 'al' },
-  { matches: ['greek', 'ελληνικά', 'ell', 'gre', 'el'], langCode: 'EL', countryCode: 'gr' },
-  { matches: ['czech', 'čeština', 'cestina', 'ces', 'cze', 'cs'], langCode: 'CS', countryCode: 'cz' },
-  { matches: ['slovak', 'slovenčina', 'slovencina', 'slk', 'sk'], langCode: 'SK', countryCode: 'sk' },
-  { matches: ['hungarian', 'magyar', 'hun', 'hu'], langCode: 'HU', countryCode: 'hu' },
-  { matches: ['romanian', 'română', 'romana', 'ron', 'rum', 'ro'], langCode: 'RO', countryCode: 'ro' },
-  { matches: ['ukrainian', 'українська', 'ukr', 'ua', 'uk'], langCode: 'UK', countryCode: 'ua' },
-  { matches: ['swedish', 'svenska', 'swe', 'sv'], langCode: 'SV', countryCode: 'se' },
-  { matches: ['norwegian', 'norsk', 'nor', 'no'], langCode: 'NO', countryCode: 'no' },
-  { matches: ['danish', 'dansk', 'dan', 'da'], langCode: 'DA', countryCode: 'dk' },
-  { matches: ['finnish', 'suomi', 'fin', 'fi'], langCode: 'FI', countryCode: 'fi' },
-  { matches: ['estonian', 'eesti', 'est', 'et'], langCode: 'ET', countryCode: 'ee' },
-  { matches: ['lithuanian', 'lietuvių', 'lit', 'lt'], langCode: 'LT', countryCode: 'lt' },
-  { matches: ['latvian', 'latviešu', 'lav', 'lv'], langCode: 'LV', countryCode: 'lv' },
-  { matches: ['hebrew', 'עברית', 'heb', 'he'], langCode: 'HE', countryCode: 'il' },
-  { matches: ['persian', 'farsi', 'فارسی', 'fas', 'per', 'fa'], langCode: 'FA', countryCode: 'ir' },
-  { matches: ['icelandic', 'íslenska', 'isl', 'is'], langCode: 'IS', countryCode: 'is' },
-];
+    // European & Balkan Languages
+    { matches: ['croatian', 'hrvatski', 'hrv', 'hr'], langCode: 'HR', countryCode: 'hr' },
+    { matches: ['serbian', 'srpski', 'srp', 'sr'], langCode: 'SR', countryCode: 'rs' },
+    { matches: ['bosnian', 'bosanski', 'bos', 'bs'], langCode: 'BS', countryCode: 'ba' },
+    { matches: ['slovenian', 'slovenski', 'slv', 'sl'], langCode: 'SL', countryCode: 'si' },
+    { matches: ['bulgarian', 'български', 'bul', 'bg'], langCode: 'BG', countryCode: 'bg' },
+    { matches: ['macedonian', 'македонски', 'mkd', 'mk'], langCode: 'MK', countryCode: 'mk' },
+    { matches: ['albanian', 'shqip', 'sqi', 'alb', 'sq'], langCode: 'SQ', countryCode: 'al' },
+    { matches: ['greek', 'ελληνικά', 'ell', 'gre', 'el'], langCode: 'EL', countryCode: 'gr' },
+    { matches: ['czech', 'čeština', 'cestina', 'ces', 'cze', 'cs'], langCode: 'CS', countryCode: 'cz' },
+    { matches: ['slovak', 'slovenčina', 'slovencina', 'slk', 'sk'], langCode: 'SK', countryCode: 'sk' },
+    { matches: ['hungarian', 'magyar', 'hun', 'hu'], langCode: 'HU', countryCode: 'hu' },
+    { matches: ['romanian', 'română', 'romana', 'ron', 'rum', 'ro'], langCode: 'RO', countryCode: 'ro' },
+    { matches: ['ukrainian', 'українська', 'ukr', 'ua', 'uk'], langCode: 'UK', countryCode: 'ua' },
+    { matches: ['swedish', 'svenska', 'swe', 'sv'], langCode: 'SV', countryCode: 'se' },
+    { matches: ['norwegian', 'norsk', 'nor', 'no'], langCode: 'NO', countryCode: 'no' },
+    { matches: ['danish', 'dansk', 'dan', 'da'], langCode: 'DA', countryCode: 'dk' },
+    { matches: ['finnish', 'suomi', 'fin', 'fi'], langCode: 'FI', countryCode: 'fi' },
+    { matches: ['estonian', 'eesti', 'est', 'et'], langCode: 'ET', countryCode: 'ee' },
+    { matches: ['lithuanian', 'lietuvių', 'lit', 'lt'], langCode: 'LT', countryCode: 'lt' },
+    { matches: ['latvian', 'latviešu', 'lav', 'lv'], langCode: 'LV', countryCode: 'lv' },
+    { matches: ['hebrew', 'עברית', 'heb', 'he'], langCode: 'HE', countryCode: 'il' },
+    { matches: ['persian', 'farsi', 'فارسی', 'fas', 'per', 'fa'], langCode: 'FA', countryCode: 'ir' },
+    { matches: ['icelandic', 'íslenska', 'isl', 'is'], langCode: 'IS', countryCode: 'is' },
+  ];
 
 export const normalizeForLanguageCheck = (str?: string | null): string =>
   (str || '')
@@ -636,14 +636,14 @@ export default function NativeWebPlayer({
         next === 'cover'
           ? 'Zoom to Fill (Best Fit)'
           : next === 'fill'
-          ? 'Stretch to Fit'
-          : 'Original (Fit to Screen)';
+            ? 'Stretch to Fit'
+            : 'Original (Fit to Screen)';
       setFitToast(label);
       if (fitToastTimeoutRef.current) clearTimeout(fitToastTimeoutRef.current);
       fitToastTimeoutRef.current = setTimeout(() => setFitToast(null), 1600);
       try {
         localStorage.setItem('snapflix_player_fit', next);
-      } catch {}
+      } catch { }
       return next;
     });
   }, []);
@@ -704,7 +704,7 @@ export default function NativeWebPlayer({
                   setIsPlaying(true);
                   setHasStartedPlayback(true);
                   setIsBuffering(false);
-                }).catch(() => {});
+                }).catch(() => { });
               }
             };
             window.addEventListener('pointerdown', startOnInteraction, { once: true, passive: true });
@@ -737,7 +737,7 @@ export default function NativeWebPlayer({
         videoRef.current.currentTime = time;
         setCurrentTime(time);
       }
-      videoRef.current.play().catch(() => {});
+      videoRef.current.play().catch(() => { });
       setIsPlaying(true);
     },
     onRemotePause: (time, sender) => {
@@ -770,7 +770,7 @@ export default function NativeWebPlayer({
       }
       if (isPlayingRemote && videoRef.current.paused) {
         isRemoteActionRef.current = true;
-        videoRef.current.play().catch(() => {});
+        videoRef.current.play().catch(() => { });
         setIsPlaying(true);
       } else if (!isPlayingRemote && !videoRef.current.paused) {
         isRemoteActionRef.current = true;
@@ -840,13 +840,13 @@ export default function NativeWebPlayer({
           .then((pos) => {
             if (pos > 5) applyResumeTime(pos);
           })
-          .catch(() => {});
+          .catch(() => { });
       } else {
         getTvShowLastPosition(Number(tmdbId), mediaSeason, mediaEpisode)
           .then((pos) => {
             if (pos > 5) applyResumeTime(pos);
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
   }, [tmdbId, type, season, episode, initialTime, user]);
@@ -1072,14 +1072,14 @@ export default function NativeWebPlayer({
       try {
         hls.subtitleTrack = -1;
         hls.subtitleDisplay = false;
-      } catch (e) {}
+      } catch (e) { }
     }
     const el = media || videoRef.current;
     if (el?.textTracks) {
       for (let i = 0; i < el.textTracks.length; i++) {
         try {
           el.textTracks[i].mode = 'disabled';
-        } catch (e) {}
+        } catch (e) { }
       }
     }
   }, []);
@@ -1095,7 +1095,7 @@ export default function NativeWebPlayer({
         if (activeSubtitleIdRef.current === 'off') {
           try {
             track.mode = 'disabled';
-          } catch (e) {}
+          } catch (e) { }
         }
       };
       (track as any)._snapflixCueHandler = handler;
@@ -1110,7 +1110,7 @@ export default function NativeWebPlayer({
       if (activeSubtitleIdRef.current === 'off' && e.track) {
         try {
           e.track.mode = 'disabled';
-        } catch (err) {}
+        } catch (err) { }
       } else if (e.track) {
         attachCueListener(e.track);
       }
@@ -1747,10 +1747,10 @@ export default function NativeWebPlayer({
       targetProvider === 'vidly'
         ? vidlyResults
         : targetProvider === 'vidbolt'
-        ? vidboltResults
-        : targetProvider === 'cineverse'
-        ? cineverseResults
-        : vidyResults;
+          ? vidboltResults
+          : targetProvider === 'cineverse'
+            ? cineverseResults
+            : vidyResults;
     if (results && results.length > 0) {
       setProviderResults(results);
     }
@@ -2547,8 +2547,13 @@ export default function NativeWebPlayer({
 
   // 2. Playable URL with Proxy rewrite
   const getPlayableUrl = useCallback((stream: StreamItem) => {
-    // If stream is already proxied through our edge gateway or backend proxy, do not double proxy
-    if (stream.link.includes('proxy-stream') || stream.link.includes('/api/proxy')) {
+    // If stream is already proxied or is our own Cineverse / Vidbolt server, play directly with 0 proxy overhead
+    if (
+      stream.link.includes('proxy-stream') ||
+      stream.link.includes('/api/proxy') ||
+      stream.link.includes('cineverse.snapflix.indevs.in') ||
+      stream.link.includes('/api/stream/master.m3u8')
+    ) {
       return stream.link;
     }
 
@@ -2744,7 +2749,13 @@ export default function NativeWebPlayer({
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 // If direct stream failed, attempt proxy fallback once via dedicated VPS proxy
-                if (hls.url && !hls.url.includes('proxy-stream') && !hls.url.includes('/api/proxy')) {
+                if (
+                  hls.url &&
+                  !hls.url.includes('proxy-stream') &&
+                  !hls.url.includes('/api/proxy') &&
+                  !hls.url.includes('cineverse.snapflix.indevs.in') &&
+                  !hls.url.includes('/api/stream/master.m3u8')
+                ) {
                   const vpsApiBase = (process.env.NEXT_PUBLIC_BACKEND_URL_TIER2 || 'https://vidy.snapflix.indevs.in').replace(/\/$/, '');
                   const headersJson = JSON.stringify(selectedStream.headers || {});
                   const proxyUrl = `${vpsApiBase}/api/proxy/stream?v=2&url=${encodeURIComponent(
@@ -2787,7 +2798,7 @@ export default function NativeWebPlayer({
             if (videoRef.current) {
               try {
                 videoRef.current.currentTime = seekTo;
-              } catch (e) {}
+              } catch (e) { }
             }
           };
           videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
@@ -2805,7 +2816,7 @@ export default function NativeWebPlayer({
           if (videoRef.current) {
             try {
               videoRef.current.currentTime = seekTo;
-            } catch (e) {}
+            } catch (e) { }
           }
         };
         videoEl.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
@@ -2852,12 +2863,12 @@ export default function NativeWebPlayer({
       if (vid.readyState >= 1) {
         try {
           vid.currentTime = savedResumeTime;
-        } catch (e) {}
+        } catch (e) { }
       } else {
         const onLoaded = () => {
           try {
             vid.currentTime = savedResumeTime;
-          } catch (e) {}
+          } catch (e) { }
         };
         vid.addEventListener('loadedmetadata', onLoaded, { once: true });
       }
@@ -3112,7 +3123,7 @@ export default function NativeWebPlayer({
       try {
         const orientation = (screen as any)?.orientation || (screen as any)?.mozOrientation || (screen as any)?.msOrientation;
         if (orientation && typeof orientation.lock === 'function') {
-          await orientation.lock('landscape').catch(() => {});
+          await orientation.lock('landscape').catch(() => { });
         }
       } catch (lockErr) {
         console.warn('[Player] Orientation lock error:', lockErr);
@@ -3163,7 +3174,7 @@ export default function NativeWebPlayer({
           if (orientation && typeof orientation.unlock === 'function') {
             orientation.unlock();
           }
-        } catch {}
+        } catch { }
       }
     };
     document.addEventListener('fullscreenchange', handleFsChange);
@@ -3297,7 +3308,7 @@ export default function NativeWebPlayer({
               fitToastTimeoutRef.current = setTimeout(() => setFitToast(null), 1600);
               try {
                 localStorage.setItem('snapflix_player_fit', 'cover');
-              } catch {}
+              } catch { }
             }
           } else if (delta < -35) {
             // Pinch IN -> Original fit to screen (contain)
@@ -3308,7 +3319,7 @@ export default function NativeWebPlayer({
               fitToastTimeoutRef.current = setTimeout(() => setFitToast(null), 1600);
               try {
                 localStorage.setItem('snapflix_player_fit', 'contain');
-              } catch {}
+              } catch { }
             }
           }
         }
@@ -3506,8 +3517,8 @@ export default function NativeWebPlayer({
                 {currentTime > 5
                   ? `Resume (${formatTime(currentTime)})`
                   : savedResumeTime > 5
-                  ? `Resume (${formatTime(savedResumeTime)})`
-                  : 'Play'}
+                    ? `Resume (${formatTime(savedResumeTime)})`
+                    : 'Play'}
               </span>
             </button>
 
@@ -3551,7 +3562,7 @@ export default function NativeWebPlayer({
       {/* 2. Loading State (Netflix-Themed with Top-Left Content Rating Badge) */}
       {loadingStreams && (
         <div className="absolute inset-0 bg-black flex flex-col items-center justify-center z-40 select-none overflow-hidden animate-in fade-in duration-300">
-          
+
           {/* Top-Left: Rated Badge with Back Button Overlay */}
           <div className="absolute top-3 left-3 sm:top-5 sm:left-6 z-50 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="relative">
@@ -3669,9 +3680,8 @@ export default function NativeWebPlayer({
       {/* 5.1 Center YouTube-Style Transport Controls (Rewind 10s | Large Play/Pause | Forward 10s) */}
       {!loadingStreams && !playbackError && !showPauseHero && (
         <div
-          className={`absolute inset-0 pointer-events-none flex items-center justify-center z-20 transition-opacity duration-300 ${
-            showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
-          }`}
+          className={`absolute inset-0 pointer-events-none flex items-center justify-center z-20 transition-opacity duration-300 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
+            }`}
         >
           <div className={`flex items-center gap-4 sm:gap-10 ${showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'}`}>
             {/* Rewind 10s */}
@@ -3726,11 +3736,10 @@ export default function NativeWebPlayer({
       {/* 5.2 YouTube-Style Double-Tap Seek Ripple Overlay */}
       {doubleTapSide && (
         <div
-          className={`absolute inset-y-0 w-1/2 pointer-events-none select-none z-25 overflow-hidden flex items-center justify-center transition-opacity duration-300 ${
-            doubleTapSide === 'left'
+          className={`absolute inset-y-0 w-1/2 pointer-events-none select-none z-25 overflow-hidden flex items-center justify-center transition-opacity duration-300 ${doubleTapSide === 'left'
               ? 'left-0 rounded-r-full bg-gradient-to-r from-white/[0.06] to-transparent'
               : 'right-0 rounded-l-full bg-gradient-to-l from-white/[0.06] to-transparent'
-          }`}
+            }`}
         >
           {/* Moving Expanding Ripple Wave */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -3778,9 +3787,8 @@ export default function NativeWebPlayer({
 
       {/* 6. Top Bar (Title & Episode on Left | Quality, CC Audio & Subtitles, Next Episode on Right) */}
       <div
-        className={`absolute top-0 inset-x-0 px-3 sm:px-6 pt-2.5 sm:pt-4 pb-4 sm:pb-6 bg-gradient-to-b from-black/90 via-black/40 to-transparent flex items-center justify-between z-30 transition-opacity duration-300 ${
-          showControls || !isPlaying ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`absolute top-0 inset-x-0 px-3 sm:px-6 pt-2.5 sm:pt-4 pb-4 sm:pb-6 bg-gradient-to-b from-black/90 via-black/40 to-transparent flex items-center justify-between z-30 transition-opacity duration-300 ${showControls || !isPlaying ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
       >
         {/* Left: Back Button + Title + Subtitle/Episode */}
         <div className="flex items-center gap-3">
@@ -3794,9 +3802,8 @@ export default function NativeWebPlayer({
             </button>
           )}
           <div
-            className={`flex flex-col transition-opacity duration-300 ${
-              showPauseHero ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}
+            className={`flex flex-col transition-opacity duration-300 ${showPauseHero ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
           >
             <h1 className="text-sm sm:text-base font-extrabold uppercase tracking-wide text-white line-clamp-1 drop-shadow-md">
               {title}
@@ -3861,11 +3868,10 @@ export default function NativeWebPlayer({
                           key={q.key}
                           type="button"
                           onClick={() => handleSelectQuality(q.key)}
-                          className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${
-                            isSelected
+                          className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${isSelected
                               ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
                               : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="w-3.5 text-center shrink-0">
@@ -3900,11 +3906,10 @@ export default function NativeWebPlayer({
                             key={server.id}
                             type="button"
                             onClick={() => handleSelectServerOption(server)}
-                            className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${
-                              isActive
+                            className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between transition cursor-pointer ${isActive
                                 ? 'bg-red-600/15 text-white font-semibold border border-red-500/30'
                                 : 'text-gray-300 hover:bg-white/[0.06] hover:text-white'
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <span className="w-3.5 text-center shrink-0">
@@ -4243,9 +4248,8 @@ export default function NativeWebPlayer({
 
       {/* 7. Bottom Control Bar (Sleek Scrubber + Timestamp & Fullscreen) */}
       <div
-        className={`absolute bottom-0 inset-x-0 px-3 sm:px-6 pt-6 sm:pt-8 pb-1.5 sm:pb-3 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-0.5 sm:gap-1.5 z-30 transition-opacity duration-300 ${
-          (showControls || !isPlaying) && !showPauseHero ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`absolute bottom-0 inset-x-0 px-3 sm:px-6 pt-6 sm:pt-8 pb-1.5 sm:pb-3 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-0.5 sm:gap-1.5 z-30 transition-opacity duration-300 ${(showControls || !isPlaying) && !showPauseHero ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
       >
         {/* Scrubber Slider (Netflix Red Style) */}
         <div className="relative w-full py-1 sm:py-2 flex items-center group/scrubber cursor-pointer select-none">
@@ -4668,11 +4672,10 @@ export default function NativeWebPlayer({
                           handleSelectQuality(q.key);
                           setShowMobileDrawer(false);
                         }}
-                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                          isSelected
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${isSelected
                             ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
                             : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="w-4 text-center shrink-0">
@@ -4702,11 +4705,10 @@ export default function NativeWebPlayer({
                             handleSelectServerOption(server);
                             setShowMobileDrawer(false);
                           }}
-                          className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                            isActive
+                          className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${isActive
                               ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
                               : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="w-4 text-center shrink-0">
@@ -4736,11 +4738,10 @@ export default function NativeWebPlayer({
                         onClick={() => {
                           handleSelectLanguage(item.name);
                         }}
-                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                          isActive
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${isActive
                             ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
                             : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="w-4 text-center shrink-0">
@@ -4777,11 +4778,10 @@ export default function NativeWebPlayer({
                   <button
                     type="button"
                     onClick={() => handleSelectSubtitle('off')}
-                    className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                      activeSubtitleId === 'off'
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${activeSubtitleId === 'off'
                         ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
                         : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="w-4 text-center shrink-0">
@@ -4799,11 +4799,10 @@ export default function NativeWebPlayer({
                         key={sub.id}
                         type="button"
                         onClick={() => handleSelectSubtitle(sub.id)}
-                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${
-                          isActive
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-left flex items-center justify-between transition cursor-pointer active:scale-[0.99] ${isActive
                             ? 'bg-red-600/20 text-white font-bold border border-red-500/40 shadow-sm'
                             : 'text-gray-300 hover:bg-white/[0.08] hover:text-white bg-white/[0.03]'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="w-4 text-center shrink-0">

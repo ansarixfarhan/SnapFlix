@@ -1425,12 +1425,20 @@ export default function NativeWebPlayer({
     return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, [showNextEpPreview]);
 
-  // Available spoken languages scoped strictly to the current active server
+  // Available spoken languages across all active providers & current stream HLS tracks
   const availableLanguages = useMemo(() => {
     const counts = new Map<string, number>();
-    // Deduplicate streams for current active server by link
     const seenLinks = new Set<string>();
-    providerResults.forEach((prov) => {
+
+    const allProvidersList = [
+      ...providerResults,
+      ...vidlyResults,
+      ...vidboltResults,
+      ...vidriftResults,
+      ...vidyResults,
+    ];
+
+    allProvidersList.forEach((prov) => {
       prov.streams?.forEach((s) => {
         if (!isPlayableStream(s)) return;
         const linkKey = s.link || String(prov.providerName);
@@ -1444,9 +1452,9 @@ export default function NativeWebPlayer({
       });
     });
 
-    // Also include live HLS internal audio tracks if available for current stream
+    // Also include live HLS internal audio tracks if available for current stream (only if multiple tracks exist)
     const effectiveHlsTracks = (hlsAudioTracks.length > 0 ? hlsAudioTracks : (hlsRef.current?.audioTracks || []));
-    if (effectiveHlsTracks.length > 0) {
+    if (effectiveHlsTracks.length > 1) {
       effectiveHlsTracks.forEach((track: any) => {
         const namePart = (track.name || '').trim();
         const langPart = (track.lang || '').trim();
@@ -1477,7 +1485,7 @@ export default function NativeWebPlayer({
         if (b.name === 'English') return 1;
         return b.count - a.count;
       });
-  }, [providerResults, originalLanguage, hlsAudioTracks]);
+  }, [providerResults, vidlyResults, vidboltResults, vidriftResults, vidyResults, originalLanguage, hlsAudioTracks]);
 
   // Keep activeLanguage in sync with current stream
   useEffect(() => {
@@ -1566,84 +1574,68 @@ export default function NativeWebPlayer({
       }
     }
 
-    // 2. Find best playable stream supporting targetLang across providers
+    // 2. Cross-server switch: find best playable stream supporting targetLang across providers
     let candidateStream: StreamItem | null = null;
-    let candidateProvider: 'vidly' | 'vidbolt' | 'vidrift' | 'vidy' = activeServerProvider;
+    let targetProvKey: 'vidly' | 'vidbolt' | 'vidrift' | 'vidy' = activeServerProvider;
+    let targetProvList: ProviderResult[] = providerResults;
 
-    const allProvidersList = [
-      ...providerResults,
-      ...vidlyResults,
-      ...vidboltResults,
-      ...vidriftResults,
-      ...vidyResults,
+    const allProvidersWithKeys: Array<{ key: 'vidly' | 'vidbolt' | 'vidrift' | 'vidy'; results: ProviderResult[] }> = [
+      { key: 'vidly', results: vidlyResults },
+      { key: 'vidbolt', results: vidboltResults },
+      { key: 'vidrift', results: vidriftResults },
+      { key: 'vidy', results: vidyResults },
     ];
 
-    // A. Search within current provider first for a stream supporting targetLang
-    if (selectedStream) {
-      const currentProv = allProvidersList.find(
-        (p) =>
-          p.providerName === selectedStream.providerName ||
-          (selectedStream.providerValue && p.providerValue === selectedStream.providerValue)
-      );
-      if (currentProv) {
-        const matches = currentProv.streams.filter((s) => {
-          if (!isPlayableStream(s)) return false;
-          const langs = getStreamAudioLanguages(s, currentProv.infoTitle, originalLanguage);
-          return langs.includes(targetLang);
-        });
-        const currentQ = selectedStream.quality || '';
-        const sameQuality = currentQ ? matches.find((s) => s.link !== selectedStream.link && s.quality === currentQ) : null;
-        const diff = sameQuality || matches.find((s) => s.link !== selectedStream.link);
-        if (diff) {
-          candidateStream = { ...diff, providerName: currentProv.providerName };
-        } else if (matches.length > 0) {
-          candidateStream = { ...matches[0], providerName: currentProv.providerName };
-        }
-      }
-    }
-
-    // B. If current provider has no alternative stream for targetLang, search ALL providers
-    if (!candidateStream) {
-      for (const prov of allProvidersList) {
+    // A. Check current active provider first
+    const currentActiveGroup = allProvidersWithKeys.find((g) => g.key === activeServerProvider);
+    if (currentActiveGroup) {
+      for (const prov of currentActiveGroup.results) {
         const matches = prov.streams.filter((s) => {
           if (!isPlayableStream(s)) return false;
           const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
           return langs.includes(targetLang);
         });
-
         if (matches.length > 0) {
           const currentQ = selectedStream?.quality || '';
           const sameQuality = currentQ ? matches.find((s) => s.link !== selectedStream?.link && s.quality === currentQ) : null;
-          const diff = sameQuality || matches.find((s) => s.link !== selectedStream?.link);
-          if (diff) {
+          const diff = sameQuality || matches.find((s) => s.link !== selectedStream?.link) || matches[0];
+          candidateStream = { ...diff, providerName: prov.providerName };
+          targetProvKey = currentActiveGroup.key;
+          targetProvList = currentActiveGroup.results;
+          break;
+        }
+      }
+    }
+
+    // B. If current provider has no alternative stream for targetLang, search ALL other providers
+    if (!candidateStream) {
+      for (const group of allProvidersWithKeys) {
+        if (group.key === activeServerProvider) continue;
+        for (const prov of group.results) {
+          const matches = prov.streams.filter((s) => {
+            if (!isPlayableStream(s)) return false;
+            const langs = getStreamAudioLanguages(s, prov.infoTitle, originalLanguage);
+            return langs.includes(targetLang);
+          });
+          if (matches.length > 0) {
+            const currentQ = selectedStream?.quality || '';
+            const sameQuality = currentQ ? matches.find((s) => s.quality === currentQ) : null;
+            const diff = sameQuality || matches[0];
             candidateStream = { ...diff, providerName: prov.providerName };
+            targetProvKey = group.key;
+            targetProvList = group.results;
             break;
-          } else if (!candidateStream) {
-            candidateStream = { ...matches[0], providerName: prov.providerName };
           }
         }
+        if (candidateStream) break;
       }
     }
 
     if (candidateStream) {
       resumeTimeRef.current = videoRef.current?.currentTime || currentTime || 0;
+      setActiveServerProvider(targetProvKey);
+      setProviderResults(targetProvList);
       setSelectedStream(candidateStream);
-
-      // Synchronize provider and results to ensure UI consistency
-      const pName = (candidateStream.providerName || '').toLowerCase();
-      if (pName.includes('vidly')) {
-        setActiveServerProvider('vidly');
-        setProviderResults(vidlyResults);
-      } else if (pName.includes('vidbolt')) {
-        setActiveServerProvider('vidbolt');
-        setProviderResults(vidboltResults);
-      } else if (pName.includes('vidrift')) {
-        setActiveServerProvider('vidrift');
-        setProviderResults(vidriftResults);
-      } else if (pName.includes('vidy')) {
-        setActiveServerProvider('vidy');
-        setProviderResults(vidyResults);
-      }
 
       setShowAudioMenu(false);
       setShowMobileDrawer(false);
@@ -1661,90 +1653,81 @@ export default function NativeWebPlayer({
     streams: StreamItem[];
   }
 
-  // Deduplicated servers list (Server 1: Vidly, Server 2: VidBolt, Server 3: VidRift, Server 4: Vidy Node)
+  // Deduplicated servers list (Server 1: SnapFlix Fast, Server 2: VidBolt, Server 3: VidRift, Server 4: Vidy Standby)
   const availableServers = useMemo<UniqueServerOption[]>(() => {
     const list: UniqueServerOption[] = [];
-    const seen = new Set<string>();
 
-    // Server 1: Vidly
+    // Server 1: SnapFlix Fast (Vidly)
+    const vidlyStreams: StreamItem[] = [];
     vidlyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
-        if (!isPlayableStream(s)) return;
-        const name = s.server || 'Server 1 (Fast Cloud)';
-        const key = `vidly-${name}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          list.push({
-            id: key,
-            name,
-            provider: 'vidly',
-            streams: [{ ...s, providerName: prov.providerName }],
-          });
-        } else {
-          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
+        if (isPlayableStream(s)) {
+          vidlyStreams.push({ ...s, providerName: prov.providerName });
         }
       });
     });
+    if (vidlyStreams.length > 0) {
+      list.push({
+        id: 'server-1-vidly',
+        name: 'Server 1: SnapFlix Fast',
+        provider: 'vidly',
+        streams: vidlyStreams,
+      });
+    }
 
     // Server 2: VidBolt
+    const vidboltStreams: StreamItem[] = [];
     vidboltResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
-        if (!isPlayableStream(s)) return;
-        const name = s.server || 'Server 2 (VidBolt Multi-Audio)';
-        const key = `vidbolt-${name}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          list.push({
-            id: key,
-            name,
-            provider: 'vidbolt',
-            streams: [{ ...s, providerName: prov.providerName }],
-          });
-        } else {
-          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
+        if (isPlayableStream(s)) {
+          vidboltStreams.push({ ...s, providerName: prov.providerName });
         }
       });
     });
+    if (vidboltStreams.length > 0) {
+      list.push({
+        id: 'server-2-vidbolt',
+        name: 'Server 2: VidBolt (Multi-Audio)',
+        provider: 'vidbolt',
+        streams: vidboltStreams,
+      });
+    }
 
-    // Server 3: VidRift
+    // Server 3: VidRift (All audio dubs merged into one clean server)
+    const vidriftStreams: StreamItem[] = [];
     vidriftResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
-        if (!isPlayableStream(s)) return;
-        const name = s.server || 'Server 3 (VidRift Fast HLS)';
-        const key = `vidrift-${name}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          list.push({
-            id: key,
-            name,
-            provider: 'vidrift',
-            streams: [{ ...s, providerName: prov.providerName }],
-          });
-        } else {
-          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
+        if (isPlayableStream(s)) {
+          vidriftStreams.push({ ...s, providerName: prov.providerName });
         }
       });
     });
+    if (vidriftStreams.length > 0) {
+      list.push({
+        id: 'server-3-vidrift',
+        name: 'Server 3: VidRift (Multi-Audio)',
+        provider: 'vidrift',
+        streams: vidriftStreams,
+      });
+    }
 
-    // Server 4: Vidy
+    // Server 4: Vidy Standby
+    const vidyStreams: StreamItem[] = [];
     vidyResults.forEach((prov) => {
       prov.streams?.forEach((s) => {
-        if (!isPlayableStream(s)) return;
-        const name = s.server || 'Server 4 (Vidy Node)';
-        const key = `vidy-${name}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          list.push({
-            id: key,
-            name,
-            provider: 'vidy',
-            streams: [{ ...s, providerName: prov.providerName }],
-          });
-        } else {
-          list.find((item) => item.id === key)?.streams.push({ ...s, providerName: prov.providerName });
+        if (isPlayableStream(s)) {
+          vidyStreams.push({ ...s, providerName: prov.providerName });
         }
       });
     });
+    if (vidyStreams.length > 0) {
+      list.push({
+        id: 'server-4-vidy',
+        name: 'Server 4: Vidy Standby',
+        provider: 'vidy',
+        streams: vidyStreams,
+      });
+    }
 
     return list;
   }, [vidlyResults, vidboltResults, vidriftResults, vidyResults]);
@@ -1829,19 +1812,27 @@ export default function NativeWebPlayer({
 
   const handleSelectServerOption = (server: UniqueServerOption) => {
     const isCurrentActive =
-      server.streams.some((s) => s.link === selectedStream?.link) ||
-      (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+      activeServerProvider === server.provider ||
+      server.streams.some((s) => s.link === selectedStream?.link);
 
-    if (isCurrentActive) {
+    if (isCurrentActive && selectedStream) {
       setShowServerQualityMenu(false);
       setShowMobileDrawer(false);
       return;
     }
 
+    // Pick stream matching ACTIVE AUDIO LANGUAGE first (e.g. Hindi, English, etc.)
+    const langMatches = server.streams.filter((s) => {
+      const langs = getStreamAudioLanguages(s, undefined, originalLanguage);
+      return langs.includes(activeLanguage);
+    });
+
+    const targetPool = langMatches.length > 0 ? langMatches : server.streams;
+
     const targetStream =
       (selectedQuality !== 'auto'
-        ? server.streams.find((s) => (s.quality || '').toLowerCase().includes(selectedQuality.replace('p', '')))
-        : null) || server.streams[0];
+        ? targetPool.find((s) => (s.quality || '').toLowerCase().includes(selectedQuality.replace('p', '')))
+        : null) || targetPool[0];
 
     handleSelectServer(server.provider, targetStream);
   };
@@ -2387,6 +2378,9 @@ export default function NativeWebPlayer({
         setVidboltResults([]);
         setVidriftResults([]);
         setVidyResults([]);
+        setHlsAudioTracks([]);
+        setCurrentHlsAudioTrack(-1);
+        userSelectedLangRef.current = null;
 
         // Parallel initiation: Fetch Vidly, VidBolt, VidRift, and Vidy simultaneously
         const primaryPromise = fetch(primaryUrl)
@@ -2603,6 +2597,7 @@ export default function NativeWebPlayer({
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    setHlsAudioTracks([]);
 
     if (!selectedStream || !videoRef.current) return;
 
@@ -3452,6 +3447,21 @@ export default function NativeWebPlayer({
         )}
       </video>
 
+      {/* 1.05 SnapFlix Discreet Watermark (Layered under all buttons and controls at z-10) */}
+      <a
+        href="https://snapflix.indevs.in"
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-10 flex items-center gap-1.5 opacity-40 hover:opacity-90 transition-opacity duration-300 pointer-events-auto select-none group"
+        title="Powered by SnapFlix (snapflix.indevs.in)"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 group-hover:scale-125 transition-transform drop-shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+        <span className="text-[11px] sm:text-xs font-black tracking-widest text-white/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] uppercase font-mono">
+          <span className="text-red-500">SNAP</span>FLIX
+        </span>
+      </a>
+
       {/* 1.1 Netflix-Style Pause Hero Image Overlay (Fades in over 0.5s after 1s paused) */}
       <div
         onClick={(e) => {
@@ -3915,8 +3925,8 @@ export default function NativeWebPlayer({
                     {availableServers.length > 0 ? (
                       availableServers.map((server) => {
                         const isActive =
-                          server.streams.some((s) => s.link === selectedStream?.link) ||
-                          (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+                          activeServerProvider === server.provider ||
+                          server.streams.some((s) => s.link === selectedStream?.link);
                         return (
                           <button
                             key={server.id}
@@ -4712,8 +4722,8 @@ export default function NativeWebPlayer({
                   {availableServers.length > 0 ? (
                     availableServers.map((server) => {
                       const isActive =
-                        server.streams.some((s) => s.link === selectedStream?.link) ||
-                        (activeServerProvider === server.provider && (!selectedStream?.server || selectedStream.server === server.name));
+                        activeServerProvider === server.provider ||
+                        server.streams.some((s) => s.link === selectedStream?.link);
                       return (
                         <button
                           key={`mobile-server-${server.id}`}

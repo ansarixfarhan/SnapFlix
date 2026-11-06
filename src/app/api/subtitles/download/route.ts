@@ -41,9 +41,30 @@ export async function GET(request: NextRequest) {
       fetchHeaders['x-user-agent'] = 'VLSub 0.10.2';
     }
 
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       headers: fetchHeaders,
     });
+
+    // If direct fetch from Cloudflare Worker returned 403 or failed (e.g. embed.vidrift.net blocking Cloudflare Worker IPs):
+    // Fall back to dedicated VPS proxy which passes upstream protection with 200 OK
+    if (!res.ok) {
+      const vpsProxy = url.includes('vidrift.net')
+        ? `https://vidrift.snapflix.indevs.in/api/proxy/stream?v=2&url=${encodeURIComponent(url)}`
+        : `https://vidy.snapflix.indevs.in/api/proxy/stream?v=2&url=${encodeURIComponent(url)}`;
+      try {
+        const vpsRes = await fetch(vpsProxy, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            Accept: '*/*',
+          },
+        });
+        if (vpsRes.ok) {
+          res = vpsRes;
+        }
+      } catch (fallbackErr) {
+        console.warn('[Subtitle Download] VPS proxy fallback error:', fallbackErr);
+      }
+    }
 
     if (!res.ok) {
       return NextResponse.json(

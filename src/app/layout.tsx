@@ -22,11 +22,12 @@ export const metadata: Metadata = {
   applicationName: siteConfig.name,
   description: siteConfig.description,
   manifest: "/manifest.json",
-  verification: GOOGLE_VERIFICATION
-    ? {
-        google: GOOGLE_VERIFICATION,
-      }
-    : undefined,
+  verification: {
+    google: GOOGLE_VERIFICATION,
+    other: {
+      monetag: "ca7b1d5fb5fd6b294dcc48eab1575a54",
+    },
+  },
   icons: {
     icon: [
       { url: "/snapflix.png", type: "image/png" },
@@ -71,6 +72,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html suppressHydrationWarning lang="en" className="dark" style={{ colorScheme: "dark" }}>
+      <head>
+        <meta name="monetag" content="ca7b1d5fb5fd6b294dcc48eab1575a54" />
+      </head>
       <link rel="preconnect" href="https://image.tmdb.org" crossOrigin="anonymous" />
       <body
         suppressHydrationWarning

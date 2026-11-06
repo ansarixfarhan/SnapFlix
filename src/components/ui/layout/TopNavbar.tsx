@@ -19,7 +19,7 @@ const TopNavbar = () => {
   const isScrolled = y > 25;
 
   const tv = pathName.includes("/tv/");
-  const player = pathName.includes("/player") || pathName.startsWith("/watch");
+  const player = pathName.includes("/player") || pathName.startsWith("/watch") || pathName.startsWith("/embed");
   const auth = pathName.includes("/auth");
 
   if (auth || player) return null;

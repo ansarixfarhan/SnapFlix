@@ -9,18 +9,24 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
   try {
+    const authHeaders = {
+      Accept: 'application/json',
+      Referer: 'https://snapflix.indevs.in/',
+      'X-SnapFlix-Client': 'snapflix-web',
+    };
+
     const [primarySettled, vidboltSettled, vidriftSettled, secondarySettled] = await Promise.allSettled([
       fetch(`${PRIMARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
-        headers: { Accept: 'application/json' },
+        headers: authHeaders,
       }).then(async (r) => (r.ok ? r.json() : null)),
       fetch(`${VIDBOLT_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
-        headers: { Accept: 'application/json' },
+        headers: authHeaders,
       }).then(async (r) => (r.ok ? r.json() : null)),
       fetch(`${VIDRIFT_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
-        headers: { Accept: 'application/json' },
+        headers: authHeaders,
       }).then(async (r) => (r.ok ? r.json() : null)),
       fetch(`${SECONDARY_BACKEND}/api/provider/resolve?${searchParams.toString()}`, {
-        headers: { Accept: 'application/json' },
+        headers: authHeaders,
       }).then(async (r) => (r.ok ? r.json() : null)),
     ]);
 

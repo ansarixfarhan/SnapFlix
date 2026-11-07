@@ -91,6 +91,7 @@ const UserProfileButton: React.FC = () => {
       ) : (
         <NetflixAvatar
           size={28}
+          avatarId={user?.user_metadata?.avatar_id}
           className="size-8 rounded-full ring-1 ring-white/30 hover:ring-[#E50914] hover:scale-105 transition-all shadow-xs"
         />
       )}
